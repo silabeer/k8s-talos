@@ -1,0 +1,3 @@
+# Без --kubelet-insecure-tls: серверные сертификаты kubelet подписывает
+# kubelet-serving-cert-approver (см. патч rotate-server-certificates в Talos).
+metrics-server: {}

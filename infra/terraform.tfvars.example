@@ -1,0 +1,29 @@
+cluster_name = "talos"
+zone         = "ru-central1-a"
+
+# Ваш публичный IP: curl -s ifconfig.me
+admin_cidrs = ["203.0.113.10/32"]
+
+# Ограничьте при желании; kube-apiserver защищён mTLS.
+apiserver_allowed_cidrs = ["0.0.0.0/0"]
+
+controlplane = {
+  count   = 3
+  cores   = 2
+  memory  = 4
+  disk_gb = 20
+}
+
+worker = {
+  count   = 2
+  cores   = 2
+  memory  = 4
+  disk_gb = 40
+}
+
+# Для экономии на тестовом стенде можно 20 или 50.
+core_fraction = 100
+
+# Статический публичный IP на каждый узел. Квота vpc.externalStaticAddresses.count
+# по умолчанию 2 и уходит на балансировщики; включайте после запроса квоты.
+node_static_ips = false

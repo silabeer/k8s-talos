@@ -1,0 +1,9 @@
+apiVersion: v2
+name: cilium
+description: Cilium CNI (umbrella chart)
+type: application
+version: 0.1.0
+dependencies:
+  - name: cilium
+    version: 1.20.1
+    repository: https://helm.cilium.io

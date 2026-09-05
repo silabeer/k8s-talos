@@ -1,0 +1,26 @@
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+*.tfplan
+
+# Секреты и сгенерированные креды
+infra/out/
+kubeconfig
+talosconfig
+
+# Helm (Argo CD собирает зависимости сам)
+**/charts/
+**/Chart.lock
+
+.DS_Store
+
+# Локальное зеркало провайдеров и конфиг CLI (генерируются make providers)
+.providers/
+.tofurc
+
+# Кэш скачанных образов Talos
+infra/.cache/

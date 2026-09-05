@@ -1,0 +1,2 @@
+name: metrics-server
+namespace: kube-system

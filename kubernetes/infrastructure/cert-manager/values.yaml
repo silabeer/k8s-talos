@@ -1,0 +1,7 @@
+acme:
+  email: silabeer@gmail.com
+
+cert-manager:
+  crds:
+    enabled: true
+    keep: true

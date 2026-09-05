@@ -1,0 +1,27 @@
+# Общий патч для всех узлов.
+machine:
+  install:
+    disk: /dev/vda
+    wipe: false
+  kubelet:
+    extraArgs:
+      # Серверные сертификаты kubelet подписывает kubelet-serving-cert-approver,
+      # это нужно metrics-server без --kubelet-insecure-tls.
+      rotate-server-certificates: "true"
+  features:
+    kubePrism:
+      enabled: true
+      port: 7445
+    hostDNS:
+      enabled: true
+      forwardKubeDNSToHost: true
+cluster:
+  network:
+    # CNI ставит Cilium (стейдж bootstrap/, дальше Argo CD).
+    cni:
+      name: none
+  # kube-proxy заменяет Cilium (kubeProxyReplacement).
+  proxy:
+    disabled: true
+  discovery:
+    enabled: true

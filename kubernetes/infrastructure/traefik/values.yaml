@@ -1,0 +1,21 @@
+# Yandex NLB (infra/lb.tf) шлёт трафик на NodePort 30080/30443 всех worker-узлов.
+traefik:
+  deployment:
+    kind: DaemonSet
+  service:
+    type: NodePort
+    spec:
+      # Сохраняем исходный IP клиента.
+      externalTrafficPolicy: Local
+  ports:
+    web:
+      nodePort: 30080
+    websecure:
+      nodePort: 30443
+  ingressClass:
+    enabled: true
+    isDefaultClass: true
+  providers:
+    kubernetesIngress:
+      publishedService:
+        enabled: false
