@@ -1,4 +1,6 @@
 # Yandex NLB (infra/lb.tf) шлёт трафик на NodePort 30080/30443 всех worker-узлов.
+# Маршрутизация через Gateway API: Traefik выступает контроллером GatewayClass
+# traefik и держит общий Gateway, на который ссылаются HTTPRoute приложений.
 traefik:
   deployment:
     kind: DaemonSet
@@ -12,14 +14,34 @@ traefik:
       nodePort: 30080
     websecure:
       nodePort: 30443
-  ingressClass:
-    enabled: true
-    isDefaultClass: true
   providers:
+    # Ingress не используется, весь вход через Gateway API.
     kubernetesIngress:
-      publishedService:
-        enabled: false
-  # Адрес в status Ingress: без него Argo CD держит приложения с Ingress
-  # в состоянии Progressing. Это ingress_ip из outputs стейджа infra/.
+      enabled: false
+    kubernetesGateway:
+      enabled: true
+      statusAddress:
+        # По умолчанию чарт копирует адрес из своего Service, но он NodePort и
+        # внешнего адреса не имеет. Берём IP балансировщика (см. ниже).
+        service:
+          enabled: false
+  ingressClass:
+    enabled: false
+  gatewayClass:
+    enabled: true
+    name: traefik
+  gateway:
+    enabled: true
+    name: traefik
+    listeners:
+      web:
+        port: 8000
+        protocol: HTTP
+        # HTTPRoute живут в неймспейсах своих приложений.
+        namespacePolicy:
+          from: All
+  # Адрес в status Gateway: без него Argo CD держит приложения с HTTPRoute
+  # в состоянии Progressing. Это ingress_ip из outputs стейджа infra/,
+  # проставляется целью `make set-ingress-ip`.
   additionalArguments:
-    - --providers.kubernetesingress.ingressendpoint.ip=93.77.187.221
+    - --providers.kubernetesgateway.statusaddress.ip=158.160.12.70

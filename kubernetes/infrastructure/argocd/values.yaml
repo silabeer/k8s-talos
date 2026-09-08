@@ -8,12 +8,15 @@ argo-cd:
     cm:
       timeout.reconciliation: 60s
   server:
-    ingress:
+    # Вход через Gateway API: общий Gateway держит Traefik.
+    httproute:
       enabled: true
-      ingressClassName: traefik
-      annotations:
-        cert-manager.io/cluster-issuer: letsencrypt-prod
-      tls: true
+      parentRefs:
+        - name: traefik
+          namespace: traefik
+          sectionName: web
+      hostnames:
+        - argocd.example.com
   # Корневое приложение (app-of-apps). Всё остальное разворачивается из kubernetes/bootstrap.
   extraObjects:
     - apiVersion: argoproj.io/v1alpha1

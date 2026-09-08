@@ -1,0 +1,21 @@
+# Вход через общий Gateway Traefik (Gateway API). Gateway живёт в неймспейсе
+# traefik, его listener web разрешает маршруты из любых неймспейсов.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: whoami
+spec:
+  parentRefs:
+    - name: traefik
+      namespace: traefik
+      sectionName: web
+  hostnames:
+    - whoami.example.com
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: whoami
+          port: 80

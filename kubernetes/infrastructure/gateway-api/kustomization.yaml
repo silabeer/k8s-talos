@@ -1,0 +1,10 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# CRD Gateway API, канал standard, v1.6.2:
+# https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.6.2/standard-install.yaml
+# Traefik 3.7 собран с библиотекой gateway-api v1.6.1, версии совместимы.
+# Вендорим, чтобы Argo CD не ходил на GitHub. На чистом кластере их же
+# накатывает bootstrap.sh: Traefik стартует с провайдером Gateway API и
+# требует, чтобы CRD уже существовали.
+resources:
+  - standard-install.yaml

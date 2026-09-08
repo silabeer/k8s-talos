@@ -56,6 +56,11 @@ helm upgrade --install cilium "$cilium_chart" \
   --namespace kube-system \
   --wait --timeout 10m
 
+# Traefik стартует с провайдером Gateway API, ему нужны CRD. Дальше ими владеет
+# приложение gateway-api в Argo CD, здесь только снимаем гонку на чистом кластере.
+echo "==> CRD Gateway API"
+kubectl apply --server-side -k "$INFRA_DIR/gateway-api" >/dev/null
+
 echo "==> Ждём готовности узлов"
 kubectl wait --for=condition=Ready nodes --all --timeout=5m
 

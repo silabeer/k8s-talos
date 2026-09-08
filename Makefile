@@ -23,7 +23,7 @@ export no_proxy := *
 export KUBECONFIG := $(CURDIR)/infra/out/kubeconfig
 export TALOSCONFIG := $(CURDIR)/infra/out/talosconfig
 
-.PHONY: help tools providers set-repo infra bootstrap up check env registry upgrade replace destroy
+.PHONY: help tools providers set-repo set-ingress-ip infra bootstrap up check env registry upgrade replace destroy
 
 help: ## Список целей
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -43,6 +43,11 @@ providers: $(TF_CLI_CONFIG_FILE) ## Скачать провайдер talos с G
 $(TF_CLI_CONFIG_FILE):
 	@printf 'provider_installation {\n  filesystem_mirror {\n    path    = "%s"\n    include = ["registry.terraform.io/siderolabs/talos"]\n  }\n  network_mirror {\n    url     = "https://terraform-mirror.yandexcloud.net/"\n    exclude = ["registry.terraform.io/siderolabs/talos"]\n  }\n}\n' "$(PROVIDERS_DIR)" > $@
 	@echo "создан $@"
+
+set-ingress-ip: ## Прописать IP балансировщика в values Traefik (после make infra)
+	@ip=$$(cd infra && $(TF) output -raw ingress_ip); \
+	sed -i '' "s#statusaddress.ip=.*#statusaddress.ip=$$ip#" kubernetes/infrastructure/traefik/values.yaml; \
+	echo "ingress_ip=$$ip записан в kubernetes/infrastructure/traefik/values.yaml, закоммитьте и запушьте"
 
 set-repo: ## Прописать URL GitOps-репозитория: make set-repo REPO=https://github.com/user/k8s-talos.git
 	@test -n "$(REPO)" || (echo "Укажите REPO=https://github.com/<user>/<repo>.git"; exit 1)

@@ -1,0 +1,19 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: pv-demo
+spec:
+  parentRefs:
+    - name: traefik
+      namespace: traefik
+      sectionName: web
+  hostnames:
+    - pv-demo.example.com
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: pv-demo
+          port: 80

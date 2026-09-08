@@ -4,4 +4,4 @@ namespace: whoami
 resources:
   - deployment.yaml
   - service.yaml
-  - ingress.yaml
+  - httproute.yaml
