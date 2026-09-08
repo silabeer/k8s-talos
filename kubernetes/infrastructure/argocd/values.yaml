@@ -8,7 +8,8 @@ argo-cd:
     cm:
       timeout.reconciliation: 60s
   server:
-    # Вход через Gateway API: общий Gateway держит Traefik.
+    # Вход через Gateway API: общий Gateway держит Traefik. В кластере без
+    # Traefik оверлей выключает HTTPRoute (kubernetes/clusters/west).
     httproute:
       enabled: true
       parentRefs:
@@ -35,7 +36,7 @@ argo-cd:
         source:
           repoURL: https://github.com/silabeer/k8s-talos.git
           targetRevision: main
-          path: kubernetes/bootstrap
+          path: kubernetes/clusters/east/bootstrap
         destination:
           server: https://kubernetes.default.svc
           namespace: argocd

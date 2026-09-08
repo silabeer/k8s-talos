@@ -1,0 +1,5 @@
+# Оверлей кластера east.
+argo-cd:
+  configs:
+    cm:
+      timeout.reconciliation: 60s

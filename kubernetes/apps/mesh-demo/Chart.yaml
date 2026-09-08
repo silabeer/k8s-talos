@@ -1,0 +1,5 @@
+apiVersion: v2
+name: mesh-demo
+description: Сервис-близнец в обоих кластерах для проверки меша и mTLS
+type: application
+version: 0.1.0

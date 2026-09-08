@@ -25,8 +25,12 @@ done < <(TALOS_VERSION="$TALOS_VERSION" EXTENSIONS="$EXTENSIONS" "$here/resolve-
 # imager создаёт образ через loopback-устройство, поэтому --privileged и /dev.
 echo "==> imager metal ($TALOS_VERSION, amd64)"
 tmp="$(mktemp -d)"
+# console=ttyS0: иначе serial console Yandex для узлов Talos пуст, и зависший
+# на загрузке узел диагностировать нечем.
 docker run --rm -v "$tmp:/out" -v /dev:/dev --privileged \
-  "ghcr.io/siderolabs/imager:$TALOS_VERSION" metal --arch amd64 "${args[@]}" >/dev/null
+  "ghcr.io/siderolabs/imager:$TALOS_VERSION" metal --arch amd64 \
+  --extra-kernel-arg console=tty0 --extra-kernel-arg console=ttyS0,115200n8 \
+  "${args[@]}" >/dev/null
 mkdir -p "$(dirname "$OUT")"
 mv "$tmp/metal-amd64.raw.zst" "$OUT"
 rm -rf "$tmp"

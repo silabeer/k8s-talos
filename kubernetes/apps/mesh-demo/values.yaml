@@ -1,0 +1,2 @@
+# Имя кластера подставляет оверлей kubernetes/clusters/<name>/values/mesh-demo.yaml.
+cluster: unknown

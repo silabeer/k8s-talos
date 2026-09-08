@@ -18,26 +18,33 @@ Argo CD разворачивает всё внутри кластера из э�
 | whoami (демо) | | Argo CD |
 | Artifact Keeper (прокси образов и чартов) | 1.8.2 | `infra/registry.tf` (отдельная ВМ) |
 
-Топология: 3 control plane + N worker в одной зоне, внешний NLB на `6443` (endpoint
-кластера) и внешний NLB на `80/443` → NodePort Traefik на worker-узлах.
+Топология: два кластера, `east` и `west`, по одному control plane и два worker,
+в одной зоне и одной VPC, но в разных подсетях. Для Istio это разные сети, и
+межкластерный трафик идёт через east-west gateway. Балансировщик перед
+kube-apiserver не создаётся: при одном control plane он ничего не добавляет,
+endpoint — зарезервированный адрес самого узла. Внешний NLB только у `east`,
+на `80/443` → NodePort Traefik.
 
 Вход в кластер описывается через Gateway API: Traefik работает контроллером
 GatewayClass `traefik` и держит общий Gateway в неймспейсе `traefik`, а приложения
 подключаются к нему объектами HTTPRoute. Провайдер Ingress выключен.
 
 ```
-infra/          OpenTofu: VPC, security group, образ Talos, ВМ, NLB, реестр, Talos machine config, bootstrap
-bootstrap/      bootstrap.sh: helm install umbrella-чартов cilium и argocd из kubernetes/infrastructure/
+infra/          OpenTofu: VPC, security group, образ Talos, реестр
+  modules/cluster/  один кластер: узлы, диски, machine config, bootstrap, NLB
+bootstrap/      bootstrap.sh <кластер>: helm install cilium и argocd
 kubernetes/
-  bootstrap/    AppProject'ы и ApplicationSet'ы (root app указывает сюда)
-  infrastructure/<name>/   платформенные компоненты, каждый = umbrella-чарт или kustomize + app.yaml
-  apps/<name>/             ваши приложения, тот же формат
+  clusters/<name>/bootstrap/  AppProject'ы и ApplicationSet'ы этого кластера
+  clusters/<name>/values/     оверлеи values: имя кластера, сеть Istio, домены
+  infrastructure/<name>/      платформенные компоненты, umbrella-чарт или kustomize
+  apps/<name>/                приложения, тот же формат
 ```
 
-Как это связано: `bootstrap.sh` ставит Argo CD с `extraObjects` → Application `root` →
-`kubernetes/bootstrap` → два ApplicationSet сканируют `kubernetes/{infrastructure,apps}/*/app.yaml`
-и создают Application на каждую папку. Чтобы добавить сервис, достаточно положить папку
-с `app.yaml` (`name`, `namespace`) и манифестами и сделать push.
+Как это связано: `bootstrap.sh <кластер>` ставит Argo CD с `extraObjects` → Application
+`root` → `kubernetes/clusters/<кластер>/bootstrap` → два ApplicationSet перечисляют
+компоненты этого кластера явно и создают по Application на каждый. Состав кластеров
+различается, поэтому список явный, а не генератор по файлам. Каждый Application берёт
+`values.yaml` компонента и, если он есть, оверлей `clusters/<кластер>/values/<имя>.yaml`.
 
 ## Предварительно
 

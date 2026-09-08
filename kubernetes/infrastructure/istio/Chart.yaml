@@ -1,0 +1,10 @@
+apiVersion: v2
+name: istio
+description: Istio ambient mesh (umbrella chart)
+type: application
+version: 0.1.0
+dependencies:
+  # Зонтичный чарт ambient тянет base (CRD), istio-cni, istiod и ztunnel.
+  - name: ambient
+    version: 1.30.4
+    repository: http://10.10.0.5/helm/helm-istio

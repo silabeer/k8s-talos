@@ -34,7 +34,7 @@ locals {
   image_slug  = "talos-${local.version_slug}-${local.image_tag}"
   image_file  = "${local.image_slug}-metal-amd64.qcow2"
   image_cache = "${path.module}/.cache/${local.image_file}"
-  bucket_name = "${var.cluster_name}-talos-images-${substr(sha1(data.yandex_client_config.this.folder_id), 0, 10)}"
+  bucket_name = "${var.project_name}-talos-images-${substr(sha1(data.yandex_client_config.this.folder_id), 0, 10)}"
 
   image_url = local.use_factory ? "https://factory.talos.dev/image/${local.schematic_id}/${var.talos_version}/metal-amd64.qcow2" : "https://github.com/siderolabs/talos/releases/download/${var.talos_version}/metal-amd64.raw.zst"
 
@@ -57,7 +57,7 @@ locals {
 # Compute Cloud принимает образы только по ссылке на Object Storage,
 # поэтому qcow2 с Image Factory сначала кладём в бакет.
 resource "yandex_iam_service_account" "images" {
-  name        = "${var.cluster_name}-images"
+  name        = "${var.project_name}-images"
   description = "Загрузка образов Talos в Object Storage"
 }
 

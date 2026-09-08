@@ -1,0 +1,5 @@
+# Оверлей кластера west поверх kubernetes/infrastructure/cilium/values.yaml.
+cilium:
+  cluster:
+    name: west
+    id: 2

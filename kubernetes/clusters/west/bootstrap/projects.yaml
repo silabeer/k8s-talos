@@ -1,0 +1,36 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: infrastructure
+  namespace: argocd
+spec:
+  description: Платформенные компоненты (CNI, ingress, cert-manager, сам Argo CD)
+  sourceRepos:
+    - "*"
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: "*"
+  clusterResourceWhitelist:
+    - group: "*"
+      kind: "*"
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: apps
+  namespace: argocd
+spec:
+  description: Прикладные сервисы
+  sourceRepos:
+    - "*"
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: "*"
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+  namespaceResourceBlacklist:
+    - group: ""
+      kind: ResourceQuota
+    - group: ""
+      kind: LimitRange

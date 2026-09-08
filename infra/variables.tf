@@ -1,19 +1,54 @@
-variable "cluster_name" {
-  description = "Имя кластера. Используется как префикс для всех ресурсов."
+variable "project_name" {
+  description = "Общий префикс для VPC и security group."
   type        = string
   default     = "talos"
+}
+
+variable "clusters" {
+  description = <<-EOT
+    Кластеры Talos. Ключ карты — имя кластера, оно же cluster.name в Cilium
+    и Istio. Подсети узлов, подов и сервисов у кластеров не должны
+    пересекаться: для Istio это разные сети, трафик между ними идёт через
+    east-west gateway.
+
+    Учтите квоты: vpc.externalAddresses.count по умолчанию 8 (у каждого узла
+    и у ВМ реестра свой NAT-адрес, NLB тоже занимает адрес), а
+    ylb.networkLoadBalancers.count — 2.
+  EOT
+  type = map(object({
+    id             = number
+    subnet_cidr    = string
+    pod_subnet     = string
+    service_subnet = string
+    controlplane = object({
+      count   = number
+      cores   = number
+      memory  = number
+      disk_gb = number
+    })
+    worker = object({
+      count          = number
+      cores          = number
+      memory         = number
+      disk_gb        = number
+      data_disk_gb   = optional(number, 0)
+      data_disk_type = optional(string, "network-hdd")
+    })
+    boot_disk_type        = optional(string, "network-ssd")
+    controlplane_static_ip = optional(bool, false)
+    ingress_lb            = optional(bool, false)
+  }))
+
+  validation {
+    condition     = length(distinct([for c in var.clusters : c.id])) == length(var.clusters)
+    error_message = "Идентификаторы кластеров должны быть уникальными."
+  }
 }
 
 variable "zone" {
   description = "Зона доступности Yandex Cloud. Кластер поднимается в одной зоне."
   type        = string
   default     = "ru-central1-a"
-}
-
-variable "subnet_cidr" {
-  description = "CIDR подсети для узлов кластера."
-  type        = string
-  default     = "10.10.0.0/24"
 }
 
 variable "talos_version" {
@@ -51,50 +86,6 @@ variable "installer_image" {
   default     = null
 }
 
-variable "controlplane" {
-  description = "Параметры control-plane узлов."
-  type = object({
-    count   = number
-    cores   = number
-    memory  = number
-    disk_gb = number
-  })
-  default = {
-    count   = 3
-    cores   = 2
-    memory  = 4
-    disk_gb = 20
-  }
-
-  validation {
-    condition     = var.controlplane.count % 2 == 1
-    error_message = "Количество control-plane узлов должно быть нечётным (кворум etcd)."
-  }
-}
-
-variable "worker" {
-  description = "Параметры worker узлов. data_disk_gb > 0 добавляет отдельный диск (/dev/vdb) под LINSTOR. У network-ssd и network-hdd отдельные квоты (по умолчанию 200 и 500 ГиБ), поэтому диск данных по умолчанию на HDD."
-  type = object({
-    count          = number
-    cores          = number
-    memory         = number
-    disk_gb        = number
-    data_disk_gb   = optional(number, 0)
-    data_disk_type = optional(string, "network-hdd")
-  })
-  default = {
-    count   = 2
-    cores   = 2
-    memory  = 4
-    disk_gb = 40
-  }
-
-  validation {
-    condition     = var.worker.count >= 1
-    error_message = "Нужен хотя бы один worker: на них живёт ingress и на них смотрит балансировщик."
-  }
-}
-
 variable "platform_id" {
   description = "Платформа ВМ Yandex Cloud."
   type        = string
@@ -105,12 +96,6 @@ variable "core_fraction" {
   description = "Гарантированная доля vCPU (20/50/100). 100 для production."
   type        = number
   default     = 100
-}
-
-variable "node_static_ips" {
-  description = "Резервировать статический публичный IP на каждый узел. Квота vpc.externalStaticAddresses.count по умолчанию 2 (уходят на балансировщики), так что включайте после её увеличения."
-  type        = bool
-  default     = false
 }
 
 variable "admin_cidrs" {
@@ -134,6 +119,7 @@ variable "registry" {
     memory      = number
     disk_gb     = number
     disk_type   = optional(string, "network-hdd") # артефакты лежат в Object Storage, SSD-квоту не тратим
+    cluster     = optional(string)                # в подсети какого кластера жить; по умолчанию первый
   })
   default = {
     enabled     = true
@@ -172,5 +158,6 @@ variable "registry_helm_repos" {
     "helm-jetstack"       = "https://charts.jetstack.io"
     "helm-metrics-server" = "https://kubernetes-sigs.github.io/metrics-server/"
     "helm-traefik"        = "https://traefik.github.io/charts"
+    "helm-istio"          = "https://istio-release.storage.googleapis.com/charts"
   }
 }

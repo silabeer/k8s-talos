@@ -1,0 +1,27 @@
+# Клиент для проверок: kubectl -n mesh-demo exec deploy/mesh-client -- wget -qO- http://mesh-demo/
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mesh-client
+  labels:
+    app: mesh-client
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mesh-client
+  template:
+    metadata:
+      labels:
+        app: mesh-client
+    spec:
+      containers:
+        - name: shell
+          image: busybox:1.37
+          command: ["sh", "-c", "sleep infinity"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 64Mi

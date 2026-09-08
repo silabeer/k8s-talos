@@ -1,0 +1,37 @@
+# Istio в режиме ambient: ztunnel на каждом узле даёт mTLS между подами по
+# идентичности SPIFFE, waypoint добавляется только там, где нужен L7.
+#
+# Межкластерная связность тоже на Istio, а не на Cluster Mesh Cilium:
+# держать две системы для одной задачи смысла нет. Кластеры объявлены
+# разными сетями, трафик между ними идёт через east-west gateway.
+#
+# Имя кластера, сеть и meshID задаёт оверлей кластера в
+# kubernetes/clusters/<name>/values/istio.yaml.
+ambient:
+  global:
+    meshID: mesh1
+    variant: distroless
+
+  istiod:
+    profile: ambient
+    env:
+      # Мультисетевой ambient: без этих флагов east-west gateway не
+      # используется и удалённые endpoint'ы не появляются.
+      AMBIENT_ENABLE_MULTI_NETWORK: "true"
+      AMBIENT_ENABLE_BAGGAGE: "true"
+    pilot:
+      # Узлы стенда 2 ядра и 4 ГБ.
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+
+  cni:
+    profile: ambient
+    cni:
+      # Cilium остаётся основным CNI, istio-cni дописывает свою цепочку.
+      chained: true
+
+  ztunnel:
+    profile: ambient
+    resourceName: ztunnel

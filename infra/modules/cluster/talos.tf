@@ -3,27 +3,37 @@ resource "talos_machine_secrets" "this" {
 }
 
 locals {
-  patch_common = file("${path.module}/patches/common.yaml")
+  patch_common = file("${var.patches_dir}/common.yaml")
   patch_role = {
-    controlplane = file("${path.module}/patches/controlplane.yaml")
-    worker       = file("${path.module}/patches/worker.yaml")
+    controlplane = file("${var.patches_dir}/controlplane.yaml")
+    worker       = file("${var.patches_dir}/worker.yaml")
   }
 
-  # Патчи, зависящие от terraform-переменных.
+  # Подсети подов и сервисов у кластеров меша не должны пересекаться.
   patch_dynamic = {
     controlplane = yamlencode({
       machine = {
-        install = { image = local.install_image }
+        install = { image = var.install_image }
         kubelet = { nodeIP = { validSubnets = [var.subnet_cidr] } }
       }
       cluster = {
         etcd = { advertisedSubnets = [var.subnet_cidr] }
+        network = {
+          podSubnets     = [var.pod_subnet]
+          serviceSubnets = [var.service_subnet]
+        }
       }
     })
     worker = yamlencode({
       machine = {
-        install = { image = local.install_image }
+        install = { image = var.install_image }
         kubelet = { nodeIP = { validSubnets = [var.subnet_cidr] } }
+      }
+      cluster = {
+        network = {
+          podSubnets     = [var.pod_subnet]
+          serviceSubnets = [var.service_subnet]
+        }
       }
     })
   }
@@ -32,14 +42,7 @@ locals {
 data "talos_machine_configuration" "this" {
   for_each = local.nodes
 
-  lifecycle {
-    precondition {
-      condition     = !(local.custom_installer && !local.registry_enabled)
-      error_message = "talos_extensions при image_source = github требуют registry.enabled = true: собранный installer публикуется в Artifact Keeper."
-    }
-  }
-
-  cluster_name       = var.cluster_name
+  cluster_name       = var.name
   cluster_endpoint   = local.cluster_endpoint
   machine_type       = each.value.role
   machine_secrets    = talos_machine_secrets.this.machine_secrets
@@ -58,8 +61,7 @@ data "talos_machine_configuration" "this" {
       }
     }),
     # Генератор кладёт документ HostnameConfig с auto: stable, а поле
-    # machine.network.hostname с ним конфликтует. Меняем документ целиком:
-    # сначала удаляем сгенерированный, затем добавляем свой.
+    # machine.network.hostname с ним конфликтует. Меняем документ целиком.
     <<-EOT
       apiVersion: v1alpha1
       kind: HostnameConfig
@@ -72,31 +74,37 @@ data "talos_machine_configuration" "this" {
       hostname   = each.key
     }),
     ],
-    # Зеркала образов через Artifact Keeper (см. registry.tf).
-    local.registry_enabled ? [local.patch_registry] : [],
-    # Модули ядра DRBD для LINSTOR, если есть расширение drbd.
-    contains(var.talos_extensions, "siderolabs/drbd") ? [file("${path.module}/patches/linstor.yaml")] : [],
+    var.extra_patches,
   )
 }
 
 data "talos_client_configuration" "this" {
-  cluster_name         = var.cluster_name
+  cluster_name         = var.name
   client_configuration = talos_machine_secrets.this.client_configuration
   endpoints            = [for name in keys(local.controlplanes) : local.node_public_ip[name]]
   nodes                = [for node in local.nodes : node.ip]
 }
 
 # Узлы загружаются в maintenance mode и ждут конфиг по API (порт 50000).
+# Перед применением конфига дожидаемся порта: провайдер talos на зависшем
+# узле отдаёт "i/o timeout" без имени узла, а скрипт называет виновника.
+resource "terraform_data" "wait_api" {
+  depends_on = [yandex_compute_instance.node]
+
+  triggers_replace = { for name, vm in yandex_compute_instance.node : name => vm.id }
+
+  provisioner "local-exec" {
+    command = "${var.scripts_dir}/wait-talos-api.sh"
+    environment = {
+      NODES = join(" ", [for name, ip in local.node_public_ip : "${name}=${ip}"])
+    }
+  }
+}
+
 resource "talos_machine_configuration_apply" "this" {
   for_each = local.nodes
 
-  depends_on = [
-    yandex_compute_instance.node,
-    yandex_vpc_security_group_rule.this,
-    # Installer и образы control plane тянутся через реестр, он должен быть готов.
-    terraform_data.registry_repos,
-    terraform_data.installer,
-  ]
+  depends_on = [terraform_data.wait_api]
 
   client_configuration        = talos_machine_secrets.this.client_configuration
   machine_configuration_input = data.talos_machine_configuration.this[each.key].machine_configuration
@@ -122,12 +130,12 @@ resource "talos_cluster_kubeconfig" "this" {
 
 resource "local_sensitive_file" "kubeconfig" {
   content         = talos_cluster_kubeconfig.this.kubeconfig_raw
-  filename        = "${path.module}/out/kubeconfig"
+  filename        = "${var.out_dir}/kubeconfig"
   file_permission = "0600"
 }
 
 resource "local_sensitive_file" "talosconfig" {
   content         = data.talos_client_configuration.this.talos_config
-  filename        = "${path.module}/out/talosconfig"
+  filename        = "${var.out_dir}/talosconfig"
   file_permission = "0600"
 }

@@ -10,9 +10,12 @@ data "yandex_compute_image" "ubuntu" {
 
 locals {
   registry_enabled = var.registry.enabled
-  registry_ip      = cidrhost(var.subnet_cidr, 5)
+  # ВМ реестра живёт в подсети одного из кластеров, узлы второго ходят к ней
+  # внутри VPC: подсети маршрутизируются между собой.
+  registry_cluster = coalesce(var.registry.cluster, sort(keys(var.clusters))[0])
+  registry_ip      = cidrhost(var.clusters[local.registry_cluster].subnet_cidr, 5)
   registry_url     = "http://${local.registry_ip}"
-  registry_bucket  = "${var.cluster_name}-registry-${substr(sha1(data.yandex_client_config.this.folder_id), 0, 10)}"
+  registry_bucket  = "${var.project_name}-registry-${substr(sha1(data.yandex_client_config.this.folder_id), 0, 10)}"
 
   registry_public_ip  = local.registry_enabled ? yandex_compute_instance.registry[0].network_interface[0].nat_ip_address : null
   registry_public_url = local.registry_enabled ? "http://${local.registry_public_ip}" : null
@@ -117,8 +120,8 @@ resource "yandex_storage_bucket" "registry" {
 resource "yandex_compute_instance" "registry" {
   count = local.registry_enabled ? 1 : 0
 
-  name                      = "${var.cluster_name}-registry"
-  hostname                  = "${var.cluster_name}-registry"
+  name                      = "${var.project_name}-registry"
+  hostname                  = "${var.project_name}-registry"
   zone                      = var.zone
   platform_id               = var.platform_id
   allow_stopping_for_update = true
@@ -138,7 +141,7 @@ resource "yandex_compute_instance" "registry" {
   }
 
   network_interface {
-    subnet_id          = yandex_vpc_subnet.this.id
+    subnet_id          = yandex_vpc_subnet.this[local.registry_cluster].id
     ip_address         = local.registry_ip
     nat                = true
     security_group_ids = [yandex_vpc_security_group.nodes.id]
@@ -160,7 +163,7 @@ resource "yandex_compute_instance" "registry" {
   }
 
   labels = {
-    cluster = var.cluster_name
+    cluster = var.project_name
     role    = "registry"
   }
 

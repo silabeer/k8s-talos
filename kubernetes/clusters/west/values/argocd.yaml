@@ -1,0 +1,31 @@
+# Оверлей кластера west: свой корневой Application и без входа снаружи,
+# Traefik в этом кластере не разворачивается.
+argo-cd:
+  global:
+    domain: argocd-west.example.com
+  server:
+    httproute:
+      enabled: false
+  extraObjects:
+    - apiVersion: argoproj.io/v1alpha1
+      kind: Application
+      metadata:
+        name: root
+        namespace: argocd
+        finalizers:
+          - resources-finalizer.argocd.argoproj.io
+      spec:
+        project: default
+        source:
+          repoURL: https://github.com/silabeer/k8s-talos.git
+          targetRevision: main
+          path: kubernetes/clusters/west/bootstrap
+        destination:
+          server: https://kubernetes.default.svc
+          namespace: argocd
+        syncPolicy:
+          automated:
+            prune: true
+            selfHeal: true
+          syncOptions:
+            - ServerSideApply=true

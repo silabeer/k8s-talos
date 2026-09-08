@@ -1,0 +1,11 @@
+# Оверлей кластера west поверх kubernetes/infrastructure/istio/values.yaml.
+network: network2
+
+ambient:
+  global:
+    network: network2
+    multiCluster:
+      clusterName: west
+  ztunnel:
+    multiCluster:
+      clusterName: west

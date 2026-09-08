@@ -1,27 +1,16 @@
-output "cluster_endpoint" {
-  description = "Endpoint kube-apiserver (внешний NLB)."
-  value       = local.cluster_endpoint
-}
-
-output "ingress_ip" {
-  description = "Публичный IP ingress. Направьте сюда A-записи ваших доменов."
-  value       = local.ingress_ip
-}
-
-output "nodes" {
-  description = "Узлы кластера."
+output "clusters" {
+  description = "Кластеры: endpoint, узлы, ingress."
   value = {
-    for name, node in local.nodes : name => {
-      role       = node.role
-      private_ip = node.ip
-      public_ip  = local.node_public_ip[name]
+    for name, c in module.cluster : name => {
+      id                    = c.id
+      endpoint              = c.cluster_endpoint
+      ingress_ip            = c.ingress_ip
+      controlplane_public_ip = c.controlplane_public_ip
+      nodes                 = c.nodes
+      kubeconfig            = c.kubeconfig_path
+      talosconfig           = c.talosconfig_path
     }
   }
-}
-
-output "schematic_id" {
-  description = "Схематик Image Factory, null при image_source = github."
-  value       = local.schematic_id
 }
 
 output "installer_image" {
@@ -29,15 +18,9 @@ output "installer_image" {
   value       = local.install_image
 }
 
-output "kubeconfig_raw" {
-  value     = talos_cluster_kubeconfig.this.kubeconfig_raw
-  sensitive = true
-}
-
-
-output "talosconfig" {
-  value     = data.talos_client_configuration.this.talos_config
-  sensitive = true
+output "schematic_id" {
+  description = "Схематик Image Factory, null при image_source = github."
+  value       = local.schematic_id
 }
 
 output "registry" {

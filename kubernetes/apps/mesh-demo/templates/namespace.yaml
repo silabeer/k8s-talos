@@ -1,0 +1,9 @@
+# Метка istio.io/dataplane-mode=ambient включает для подов неймспейса
+# перехват трафика ztunnel: с этого момента соединения между ними идут
+# по mTLS с идентичностью SPIFFE, без изменения манифестов приложений.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mesh-demo
+  labels:
+    istio.io/dataplane-mode: ambient

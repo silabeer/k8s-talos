@@ -1,43 +1,40 @@
 resource "yandex_vpc_network" "this" {
-  name = var.cluster_name
+  name = var.project_name
 }
 
+# По подсети на кластер: адреса узлов не должны пересекаться, а Istio
+# объявляет кластеры разными сетями.
 resource "yandex_vpc_subnet" "this" {
-  name           = "${var.cluster_name}-${var.zone}"
+  for_each = var.clusters
+
+  name           = "${each.key}-${var.zone}"
   zone           = var.zone
   network_id     = yandex_vpc_network.this.id
-  v4_cidr_blocks = [var.subnet_cidr]
+  v4_cidr_blocks = [each.value.subnet_cidr]
 }
 
-# Статические публичные адреса: endpoint kube-apiserver и вход ingress.
-resource "yandex_vpc_address" "api" {
-  name = "${var.cluster_name}-api"
+# Зарезервированный публичный адрес на первый control plane: он же cluster
+# endpoint, и при динамическом NAT он менялся бы после stop/start ВМ.
+resource "yandex_vpc_address" "controlplane" {
+  for_each = { for k, c in var.clusters : k => c if c.controlplane_static_ip }
+
+  name = "${each.key}-cp"
   external_ipv4_address {
     zone_id = var.zone
   }
 }
 
 resource "yandex_vpc_address" "ingress" {
-  name = "${var.cluster_name}-ingress"
-  external_ipv4_address {
-    zone_id = var.zone
-  }
-}
+  for_each = { for k, c in var.clusters : k => c if c.ingress_lb }
 
-# Опционально: статический публичный IP на каждый узел (см. var.node_static_ips).
-# Без него узел получает динамический NAT-IP: после stop/start ВМ он поменяется,
-# и нужно будет повторить `make infra`, чтобы обновить certSANs Talos API.
-resource "yandex_vpc_address" "node" {
-  for_each = var.node_static_ips ? local.nodes : {}
-
-  name = each.key
+  name = "${each.key}-ingress"
   external_ipv4_address {
     zone_id = var.zone
   }
 }
 
 resource "yandex_vpc_security_group" "nodes" {
-  name       = "${var.cluster_name}-nodes"
+  name       = "${var.project_name}-nodes"
   network_id = yandex_vpc_network.this.id
 }
 
@@ -52,7 +49,7 @@ locals {
         from_port         = 0
         to_port           = 65535
         predefined_target = "self_security_group"
-        description       = "Весь трафик между узлами кластера"
+        description       = "Весь трафик между узлами обоих кластеров и реестром"
       }
       egress = {
         direction      = "egress"
@@ -67,28 +64,17 @@ locals {
         protocol       = "TCP"
         port           = 50000
         v4_cidr_blocks = var.admin_cidrs
-        description    = "Talos API для администратора и terraform"
+        description    = "Talos API для администратора и tofu"
       }
       kube_api = {
         direction      = "ingress"
         protocol       = "TCP"
         port           = 6443
         v4_cidr_blocks = var.apiserver_allowed_cidrs
-        description    = "kube-apiserver через NLB"
-      }
-      kube_api_from_nodes = {
-        direction      = "ingress"
-        protocol       = "TCP"
-        port           = 6443
-        v4_cidr_blocks = [for ip in local.node_public_ip : "${ip}/32"]
-        description    = "Узлы ходят на публичный endpoint через NAT"
-      }
-      kube_api_healthcheck = {
-        direction         = "ingress"
-        protocol          = "TCP"
-        port              = 6443
-        predefined_target = "loadbalancer_healthchecks"
-        description       = "Health check NLB"
+        # Сюда же ходят сами узлы: cluster endpoint — публичный адрес control
+        # plane, и через NAT источником оказывается публичный адрес узла.
+        # Если сужаете список, добавьте в него адреса узлов обоих кластеров.
+        description = "kube-apiserver: узлы, kubectl и istiod соседнего кластера"
       }
       ingress_http = {
         direction      = "ingress"
@@ -113,7 +99,6 @@ locals {
         description       = "Health check NLB"
       }
     },
-    # ВМ реестра в той же группе: узлы ходят к ней по правилу internal.
     var.registry.enabled ? {
       registry_http = {
         direction      = "ingress"

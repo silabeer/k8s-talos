@@ -1,3 +1,5 @@
+# Компоненты кластера west перечислены явно: состав кластеров различается,
+# а генератор по файлам создавал бы во всех одно и то же.
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
@@ -7,11 +9,11 @@ spec:
   goTemplate: true
   goTemplateOptions: ["missingkey=error"]
   generators:
-    - git:
-        repoURL: https://github.com/silabeer/k8s-talos.git
-        revision: main
-        files:
-          - path: kubernetes/apps/*/app.yaml
+    - list:
+        elements:
+          - name: mesh-demo
+            namespace: mesh-demo
+            path: kubernetes/apps/mesh-demo
   template:
     metadata:
       name: "{{ .name }}"
@@ -20,7 +22,13 @@ spec:
       source:
         repoURL: https://github.com/silabeer/k8s-talos.git
         targetRevision: main
-        path: "{{ .path.path }}"
+        path: "{{ .path }}"
+        helm:
+          # Общие values компонента плюс необязательный оверлей этого кластера.
+          valueFiles:
+            - values.yaml
+            - ../../clusters/west/values/{{ .name }}.yaml
+          ignoreMissingValueFiles: true
       destination:
         server: https://kubernetes.default.svc
         namespace: "{{ .namespace }}"
@@ -32,7 +40,7 @@ spec:
           - CreateNamespace=true
           - ServerSideApply=true
         retry:
-          limit: 5
+          limit: 10
           backoff:
             duration: 15s
             factor: 2

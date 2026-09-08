@@ -1,0 +1,9 @@
+# Метка сети на istio-system: по ней istiod понимает, в какой сети живут
+# рабочие нагрузки кластера, и решает, идти напрямую или через east-west
+# gateway. Argo CD создаёт namespace без меток, поэтому задаём его сами.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: istio-system
+  labels:
+    topology.istio.io/network: {{ required "нужен .Values.network" .Values.network | quote }}

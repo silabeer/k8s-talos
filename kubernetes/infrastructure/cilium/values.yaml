@@ -1,26 +1,35 @@
 # Рекомендации Talos: https://docs.siderolabs.com/kubernetes-guides/cni/deploying-cilium
 cilium:
-  # Имя и идентификатор кластера в Cluster Mesh. Идентификаторы должны быть
-  # уникальными в пределах меша, имя попадает в identity подов.
+  # Имя и идентификатор кластера. Межкластерную связность берёт на себя
+  # Istio (east-west gateway), Cluster Mesh не используется, но имя удобно
+  # видеть в hubble и в метриках. Переопределяется оверлеем кластера.
   cluster:
-    name: talos
+    name: east
     id: 1
   ipam:
     mode: kubernetes
   kubeProxyReplacement: true
-  # Прозрачное шифрование трафика между подами. Ключи WireGuard узлы
-  # согласуют попарно, весь трафик между узлами (в том числе между
-  # кластерами меша) идёт через интерфейс cilium_wg0.
+  # Прозрачное шифрование трафика между узлами: ключи WireGuard узлы
+  # согласуют попарно, трафик идёт через интерфейс cilium_wg0.
   #
-  # Почему не ztunnel: в Cilium 1.20 mTLS на базе ztunnel даёт identity
-  # на уровне пода, но несовместим с Cluster Mesh (см. документацию
-  # "Ztunnel Transparent Encryption (Beta)"). Прежняя реализация
-  # authentication.mutual на SPIRE объявлена устаревшей и удаляется в 1.21.
+  # mTLS по идентичности рабочей нагрузки даёт Istio, а не Cilium: ztunnel
+  # в Cilium 1.20 несовместим с межкластерной работой, а прежний
+  # authentication.mutual на SPIRE удаляется в 1.21. WireGuard остаётся и
+  # закрывает трафик вне меша: kubelet, DNS, поды без sidecar.
   encryption:
     enabled: true
     type: wireguard
     # Трафик самих узлов (не подов) не шифруем: он идёт внутри VPC.
     nodeEncryption: false
+  # Совместимость с Istio (документация Cilium, раздел Integration with Istio).
+  # При kubeProxyReplacement сокетная балансировка подменяет адрес назначения
+  # ещё в connect(), и трафик уходит мимо прокси Istio. hostNamespaceOnly
+  # оставляет её только в host netns; cni.exclusive нужно снять, чтобы
+  # istio-cni мог дописать свою цепочку.
+  socketLB:
+    hostNamespaceOnly: true
+  cni:
+    exclusive: false
   # KubePrism: локальный балансировщик Talos на каждом узле.
   k8sServiceHost: localhost
   k8sServicePort: 7445
@@ -48,10 +57,8 @@ cilium:
     hostRoot: /sys/fs/cgroup
   operator:
     replicas: 1
-  # Сертификаты выпускает certgen внутри кластера (метод cronJob), а не Helm.
-  # При методе helm CA пересоздаётся при каждом рендере чарта, а он общий у
-  # кластеров меша: смена CA рвёт соединение между ними. certgen же
-  # переиспользует существующий CA и только дописывает недостающие сертификаты.
+  # Сертификаты Hubble выпускает certgen внутри кластера (метод cronJob),
+  # а не Helm: при методе helm CA пересоздаётся при каждом рендере чарта.
   hubble:
     relay:
       enabled: true
@@ -60,17 +67,3 @@ cilium:
     tls:
       auto:
         method: cronJob
-  # Cluster Mesh: clustermesh-apiserver публикует состояние кластера соседям.
-  # Тип сервиса NodePort, узлы обоих кластеров живут в одной подсети Yandex,
-  # так что балансировщик не нужен (квота ylb.networkLoadBalancers.count = 2
-  # и уже занята kube-apiserver и ingress).
-  clustermesh:
-    useAPIServer: true
-    apiserver:
-      service:
-        type: NodePort
-        nodePort: 32379
-      tls:
-        auto:
-          enabled: true
-          method: cronJob
