@@ -1,10 +1,18 @@
+# Вход через общий Gateway Traefik (Gateway API). Gateway живёт в неймспейсе
+# traefik, его listener web разрешает маршруты из любых неймспейсов.
+#
+# group, kind и weight проставлены явно, хотя это значения по умолчанию:
+# их дописывает API-сервер, а Argo CD для CRD не знает схему и считает
+# дописанные поля расхождением, из-за чего приложение навсегда OutOfSync.
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   name: pv-demo
 spec:
   parentRefs:
-    - name: traefik
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: traefik
       namespace: traefik
       sectionName: web
   hostnames:
@@ -15,5 +23,8 @@ spec:
             type: PathPrefix
             value: /
       backendRefs:
-        - name: pv-demo
+        - group: ""
+          kind: Service
+          name: pv-demo
           port: 80
+          weight: 1

@@ -12,7 +12,11 @@ argo-cd:
     httproute:
       enabled: true
       parentRefs:
-        - name: traefik
+        # group и kind — значения по умолчанию, но их дописывает API-сервер,
+        # и без них Argo CD считает ресурс изменившимся (OutOfSync навсегда).
+        - group: gateway.networking.k8s.io
+          kind: Gateway
+          name: traefik
           namespace: traefik
           sectionName: web
       hostnames:
