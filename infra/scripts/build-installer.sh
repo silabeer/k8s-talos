@@ -15,6 +15,7 @@ set -euo pipefail
 : "${TALOS_VERSION:?}" "${EXTENSIONS:?}" "${IMAGE:?}" "${ADMIN_PASSWORD:?}"
 CACHE_DIR="${CACHE_DIR:-.cache/installer}"
 wait_secs="${REGISTRY_WAIT:-900}"
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 for tool in docker crane; do
   command -v "$tool" >/dev/null || { echo "нужен $tool (make tools)" >&2; exit 1; }
@@ -41,15 +42,12 @@ if crane manifest --insecure "$IMAGE" >/dev/null 2>&1; then
 fi
 
 if [[ ! -s "$tar" ]]; then
-  echo "==> Версии расширений из каталога ghcr.io/siderolabs/extensions:$TALOS_VERSION"
-  catalog="$(crane export "ghcr.io/siderolabs/extensions:$TALOS_VERSION" - | tar x -O image-digests)"
+  echo "==> Версии расширений для $TALOS_VERSION"
   args=()
-  for ext in $EXTENSIONS; do
-    ref="$(grep -m1 "^ghcr.io/$ext:" <<<"$catalog" || true)"
-    [[ -n "$ref" ]] || { echo "расширение $ext не найдено в каталоге для $TALOS_VERSION" >&2; exit 1; }
+  while read -r ref; do
     echo "    $ref"
     args+=(--system-extension-image "$ref")
-  done
+  done < <(TALOS_VERSION="$TALOS_VERSION" EXTENSIONS="$EXTENSIONS" "$here/resolve-extensions.sh")
 
   echo "==> imager installer ($TALOS_VERSION, amd64)"
   mkdir -p "$CACHE_DIR"

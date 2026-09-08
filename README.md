@@ -141,9 +141,11 @@ air-gap: у ВМ реестра есть NAT, у узлов тоже (нужен
 
 Что для этого включено:
 
-- **Расширение ядра.** `talos_extensions = ["siderolabs/drbd"]` в tfvars. Модуль DRBD
-  собран в installer, поэтому `make infra` сначала собирает installer локально и кладёт
-  его в Artifact Keeper (см. следующий раздел), а потом ставит узлы уже с ним.
+- **Расширение ядра.** `talos_extensions = ["siderolabs/drbd"]` в tfvars. При непустом
+  списке `make infra` собирает локально и дисковый образ, и installer (см. следующий
+  раздел): `machine.install.image` применяется только при установке или `talosctl upgrade`,
+  а узлы в Yandex грузятся с готового образа диска, поэтому расширения должны быть
+  уже внутри него.
 - **Модули ядра.** `infra/patches/linstor.yaml` (drbd с `usermode_helper=disabled`,
   drbd_transport_tcp, dm-thin-pool) подмешивается автоматически, когда в
   `talos_extensions` есть drbd.
@@ -164,19 +166,38 @@ talosctl -n <worker-ip> read /proc/modules | grep drbd
 kubectl get sc
 ```
 
-Замечания: минимум два воркера (реплик две), `talosctl upgrade` при смене расширений
-обязателен, обновление оператора — перерендерить `operator.yaml` с новым `ref`
+Замечания: минимум два воркера (реплик две); при смене расширений на уже работающем
+кластере нужен `make upgrade` (образ диска меняется только для новых узлов);
+обновление оператора — перерендерить `operator.yaml` с новым `ref`
 (команда записана в `kustomization.yaml`).
+
+Если LINSTOR не отдаёт том с `Not enough available nodes`, сначала проверьте, что
+модуль DRBD действительно загружен: `linstor node info` должен показывать `+` в
+колонке DRBD, а `talosctl -n <ip> read /proc/modules` — строки drbd. Пустой вывод
+означает, что узел стоит на образе без расширения.
 
 ## Свой installer с расширениями (локальная сборка)
 
 Всё описанное ниже делает `make infra` автоматически, если в tfvars задан
-`talos_extensions` (нужны `docker` и `crane`, ставятся через `make tools`):
-`infra/scripts/build-installer.sh` собирает installer через imager и пушит его в
-hosted-репозиторий `talos` в Artifact Keeper, а `machine.install.image` получает
-адрес `10.10.0.5/talos/installer:<версия>-<хэш набора расширений>`. Тарбол кэшируется
-в `infra/.cache/installer/`, повторная сборка пропускается, если образ уже в реестре.
-Готовый образ можно задать напрямую через `installer_image`.
+`talos_extensions` (нужны `docker` и `crane`, ставятся через `make tools`). Собирается
+два образа, оба через `ghcr.io/siderolabs/imager` за считаные секунды:
+
+- **дисковый образ** (`infra/scripts/build-image.sh`, профиль `metal`) — с него грузятся
+  узлы, поэтому расширения обязаны быть внутри. Требует `--privileged` и `/dev`: imager
+  собирает образ через loopback. Дальше он идёт по обычному пути: qcow2, бакет,
+  `yandex_compute_image` с именем `talos-<версия>-ext-<хэш расширений>`;
+- **installer** (`infra/scripts/build-installer.sh`) — публикуется в hosted-репозиторий
+  `talos` в Artifact Keeper, попадает в `machine.install.image` и используется при
+  `talosctl upgrade`. Тарбол кэшируется в `infra/.cache/installer/`, повторная сборка
+  пропускается, если образ уже в реестре.
+
+Версии расширений привязываются к релизу Talos через каталог
+`ghcr.io/siderolabs/extensions` (`infra/scripts/resolve-extensions.sh`).
+Готовый installer можно задать напрямую через `installer_image`.
+
+Смена расширений на живом кластере: новый дисковый образ действует только на новые
+узлы (у существующих `image_id` в `ignore_changes`), поэтому после `make infra`
+выполните `make upgrade` — он прогонит `talosctl upgrade` по узлам по одному.
 
 Ручная сборка (если нужно собрать вне OpenTofu). Расширения Talos живут в образе **installer**,
 а не в дисковом образе. Узел грузится с ванильного `metal-amd64.raw.zst`, а при

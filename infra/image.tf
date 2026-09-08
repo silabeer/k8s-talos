@@ -24,15 +24,30 @@ locals {
 
   installer_image = local.use_factory ? "factory.talos.dev/installer/${local.schematic_id}:${var.talos_version}" : "ghcr.io/siderolabs/installer:${var.talos_version}"
 
-  image_slug  = "talos-${local.version_slug}-${local.use_factory ? substr(local.schematic_id, 0, 8) : "vanilla"}"
+  # machine.install.image применяется только при установке или `talosctl upgrade`,
+  # а узлы в Yandex грузятся с готового образа диска. Поэтому при непустом
+  # talos_extensions дисковый образ собирается локально (imager, профиль metal),
+  # а не качается ванильным с GitHub: иначе расширений на узлах не будет.
+  build_image = !local.use_factory && length(var.talos_extensions) > 0
+  image_tag   = local.use_factory ? substr(local.schematic_id, 0, 8) : (local.build_image ? "ext-${substr(sha1(join(",", sort(var.talos_extensions))), 0, 8)}" : "vanilla")
+
+  image_slug  = "talos-${local.version_slug}-${local.image_tag}"
   image_file  = "${local.image_slug}-metal-amd64.qcow2"
   image_cache = "${path.module}/.cache/${local.image_file}"
   bucket_name = "${var.cluster_name}-talos-images-${substr(sha1(data.yandex_client_config.this.folder_id), 0, 10)}"
 
   image_url = local.use_factory ? "https://factory.talos.dev/image/${local.schematic_id}/${var.talos_version}/metal-amd64.qcow2" : "https://github.com/siderolabs/talos/releases/download/${var.talos_version}/metal-amd64.raw.zst"
 
+  # Оба пути дают raw.zst, дальше одинаково: распаковка и конвертация в qcow2.
+  image_fetch_cmd = local.build_image ? join(" ", [
+    "TALOS_VERSION='${var.talos_version}'",
+    "EXTENSIONS='${join(" ", var.talos_extensions)}'",
+    "OUT='${local.image_cache}.raw.zst'",
+    "${path.module}/scripts/build-image.sh",
+  ]) : "curl -fSL -o '${local.image_cache}.raw.zst' '${local.image_url}'"
+
   image_download_cmd = local.use_factory ? "curl -fSL -o '${local.image_cache}' '${local.image_url}'" : join(" && ", [
-    "curl -fSL -o '${local.image_cache}.raw.zst' '${local.image_url}'",
+    local.image_fetch_cmd,
     "zstd -d -f -q --sparse -o '${local.image_cache}.raw' '${local.image_cache}.raw.zst'",
     "qemu-img convert -f raw -O qcow2 '${local.image_cache}.raw' '${local.image_cache}'",
     "rm -f '${local.image_cache}.raw' '${local.image_cache}.raw.zst'",
@@ -104,7 +119,7 @@ resource "yandex_storage_object" "talos" {
 
 resource "yandex_compute_image" "talos" {
   name          = local.image_slug
-  description   = "Talos Linux ${var.talos_version}, ${local.use_factory ? "schematic ${local.schematic_id}" : "vanilla image from GitHub"}"
+  description   = "Talos Linux ${var.talos_version}, ${local.use_factory ? "schematic ${local.schematic_id}" : (local.build_image ? "локальная сборка с расширениями: ${join(", ", var.talos_extensions)}" : "vanilla image from GitHub")}"
   source_url    = "https://storage.yandexcloud.net/${yandex_storage_bucket.images.bucket}/${yandex_storage_object.talos.key}"
   os_type       = "LINUX"
   min_disk_size = 10
@@ -112,6 +127,6 @@ resource "yandex_compute_image" "talos" {
 
   labels = {
     talos_version = trimprefix(var.talos_version, "v")
-    source        = local.use_factory ? substr(local.schematic_id, 0, 8) : "vanilla"
+    source        = local.image_tag
   }
 }

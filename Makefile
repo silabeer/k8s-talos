@@ -23,7 +23,7 @@ export no_proxy := *
 export KUBECONFIG := $(CURDIR)/infra/out/kubeconfig
 export TALOSCONFIG := $(CURDIR)/infra/out/talosconfig
 
-.PHONY: help tools providers set-repo infra bootstrap up check env registry replace destroy
+.PHONY: help tools providers set-repo infra bootstrap up check env registry upgrade replace destroy
 
 help: ## Список целей
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -65,6 +65,14 @@ check: ## Проверить состояние кластера
 env: ## Показать export для kubectl/talosctl
 	@echo "export KUBECONFIG=$(KUBECONFIG)"
 	@echo "export TALOSCONFIG=$(TALOSCONFIG)"
+
+upgrade: ## Обновить узлы до текущего installer (по одному): make upgrade
+	@set -e; image=$$(cd infra && $(TF) output -raw installer_image); \
+	echo "образ: $$image"; \
+	for ip in $$(cd infra && $(TF) output -json nodes | python3 -c 'import sys,json; [print(n["private_ip"]) for n in json.load(sys.stdin).values()]'); do \
+	  echo "==> $$ip"; \
+	  talosctl --nodes $$ip upgrade --image "$$image" --wait --timeout 15m; \
+	done
 
 registry: ## Адрес и пароль Artifact Keeper
 	@cd infra && $(TF) output -json registry | python3 -c 'import sys,json; d=json.load(sys.stdin); print("UI:", d["public_url"]); print("user: admin")'
