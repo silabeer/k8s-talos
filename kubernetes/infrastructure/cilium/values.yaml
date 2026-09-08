@@ -1,8 +1,26 @@
 # Рекомендации Talos: https://docs.siderolabs.com/kubernetes-guides/cni/deploying-cilium
 cilium:
+  # Имя и идентификатор кластера в Cluster Mesh. Идентификаторы должны быть
+  # уникальными в пределах меша, имя попадает в identity подов.
+  cluster:
+    name: talos
+    id: 1
   ipam:
     mode: kubernetes
   kubeProxyReplacement: true
+  # Прозрачное шифрование трафика между подами. Ключи WireGuard узлы
+  # согласуют попарно, весь трафик между узлами (в том числе между
+  # кластерами меша) идёт через интерфейс cilium_wg0.
+  #
+  # Почему не ztunnel: в Cilium 1.20 mTLS на базе ztunnel даёт identity
+  # на уровне пода, но несовместим с Cluster Mesh (см. документацию
+  # "Ztunnel Transparent Encryption (Beta)"). Прежняя реализация
+  # authentication.mutual на SPIRE объявлена устаревшей и удаляется в 1.21.
+  encryption:
+    enabled: true
+    type: wireguard
+    # Трафик самих узлов (не подов) не шифруем: он идёт внутри VPC.
+    nodeEncryption: false
   # KubePrism: локальный балансировщик Talos на каждом узле.
   k8sServiceHost: localhost
   k8sServicePort: 7445
@@ -30,8 +48,29 @@ cilium:
     hostRoot: /sys/fs/cgroup
   operator:
     replicas: 1
+  # Сертификаты выпускает certgen внутри кластера (метод cronJob), а не Helm.
+  # При методе helm CA пересоздаётся при каждом рендере чарта, а он общий у
+  # кластеров меша: смена CA рвёт соединение между ними. certgen же
+  # переиспользует существующий CA и только дописывает недостающие сертификаты.
   hubble:
     relay:
       enabled: true
     ui:
       enabled: true
+    tls:
+      auto:
+        method: cronJob
+  # Cluster Mesh: clustermesh-apiserver публикует состояние кластера соседям.
+  # Тип сервиса NodePort, узлы обоих кластеров живут в одной подсети Yandex,
+  # так что балансировщик не нужен (квота ylb.networkLoadBalancers.count = 2
+  # и уже занята kube-apiserver и ingress).
+  clustermesh:
+    useAPIServer: true
+    apiserver:
+      service:
+        type: NodePort
+        nodePort: 32379
+      tls:
+        auto:
+          enabled: true
+          method: cronJob
