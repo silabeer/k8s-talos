@@ -97,9 +97,11 @@ write_files:
       RUST_LOG=info
       JWT_SECRET=${jwt_secret}
       ADMIN_PASSWORD=${admin_password}
-      # Базовый URL в WWW-Authenticate для containerd на узлах.
-      AK_EXTERNAL_URL=${private_url}
-      CORS_ORIGINS=${private_url}
+      # AK_EXTERNAL_URL намеренно не задан: realm в WWW-Authenticate тогда берётся
+      # из Host/X-Forwarded-Host, который проставляет Caddy. Узлы обращаются по
+      # приватному адресу и получают приватный realm, а crane с рабочей машины
+      # ходит по публичному и получает публичный. С фиксированным приватным
+      # адресом crane отказывается: "realm host is a private or link-local address".
       AK_GUEST_ACCESS_ENABLED=true
       STORAGE_BACKEND=s3
       STORAGE_PATH=/data/storage

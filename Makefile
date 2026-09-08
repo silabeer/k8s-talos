@@ -70,9 +70,11 @@ registry: ## Адрес и пароль Artifact Keeper
 	@cd infra && $(TF) output -json registry | python3 -c 'import sys,json; d=json.load(sys.stdin); print("UI:", d["public_url"]); print("user: admin")'
 	@cd infra && echo "password: $$($(TF) output -raw registry_admin_password)"
 
-replace: providers ## Пересоздать ВМ, не открывшие Talos API: make replace NODES="talos-w-1 talos-w-2"
-	@test -n "$(NODES)" || (echo 'Укажите NODES="talos-w-1 talos-w-2"'; exit 1)
-	cd infra && $(TF) apply $(foreach n,$(NODES),-replace='yandex_compute_instance.node["$(n)"]')
+replace: providers ## Пересоздать ВМ: make replace NODES="talos-w-1 talos-w-2" или make replace REGISTRY=1
+	@test -n "$(NODES)$(REGISTRY)" || (echo 'Укажите NODES="talos-w-1 talos-w-2" и/или REGISTRY=1'; exit 1)
+	cd infra && $(TF) apply \
+	  $(foreach n,$(NODES),-replace='yandex_compute_instance.node["$(n)"]') \
+	  $(if $(REGISTRY),-replace='yandex_compute_instance.registry[0]')
 
 destroy: providers ## Снести инфраструктуру
 	cd infra && $(TF) destroy

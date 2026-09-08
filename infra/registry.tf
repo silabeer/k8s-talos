@@ -150,7 +150,6 @@ resource "yandex_compute_instance" "registry" {
     user-data = templatefile("${path.module}/templates/registry-cloud-init.yaml", {
       version        = var.registry.version
       web_version    = var.registry.web_version
-      private_url    = local.registry_url
       admin_password = random_password.registry_admin[0].result
       jwt_secret     = random_password.registry_jwt[0].result
       db_password    = random_password.registry_db[0].result
