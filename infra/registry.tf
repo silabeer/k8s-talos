@@ -176,9 +176,11 @@ resource "terraform_data" "registry_repos" {
 
   depends_on = [yandex_vpc_security_group_rule.this]
 
-  input = {
+  # Метаданные репозиториев лежат в PostgreSQL на самой ВМ, поэтому при её
+  # пересоздании репозитории нужно завести заново.
+  triggers_replace = {
     instance = yandex_compute_instance.registry[0].id
-    repos    = local.registry_repos
+    repos    = jsonencode(local.registry_repos)
   }
 
   provisioner "local-exec" {
@@ -198,9 +200,10 @@ resource "terraform_data" "installer" {
 
   depends_on = [terraform_data.registry_repos]
 
-  input = {
+  triggers_replace = {
     image      = local.install_image
-    extensions = var.talos_extensions
+    extensions = jsonencode(var.talos_extensions)
+    registry   = yandex_compute_instance.registry[0].id
   }
 
   provisioner "local-exec" {

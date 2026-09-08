@@ -58,8 +58,8 @@ resource "yandex_iam_service_account_static_access_key" "images" {
 
 # Права IAM применяются не мгновенно.
 resource "terraform_data" "iam_propagation" {
-  depends_on = [yandex_resourcemanager_folder_iam_member.images]
-  input      = yandex_iam_service_account.images.id
+  depends_on       = [yandex_resourcemanager_folder_iam_member.images]
+  triggers_replace = yandex_iam_service_account.images.id
 
   provisioner "local-exec" {
     command = "sleep 20"
@@ -83,7 +83,7 @@ resource "yandex_storage_bucket" "images" {
 }
 
 resource "terraform_data" "image_download" {
-  input = local.image_cache
+  triggers_replace = local.image_cache
 
   provisioner "local-exec" {
     command = "test -s '${local.image_cache}' || (mkdir -p '${dirname(local.image_cache)}' && ${local.image_download_cmd})"

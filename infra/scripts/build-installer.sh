@@ -9,10 +9,12 @@
 #   IMAGE           - куда пушить: <публичный ip реестра>/talos/installer:<tag>
 #   ADMIN_PASSWORD  - пароль admin Artifact Keeper
 #   CACHE_DIR       - кэш собранных тарболов (по умолчанию .cache/installer)
+#   REGISTRY_WAIT   - сколько секунд ждать готовности реестра (по умолчанию 900)
 set -euo pipefail
 
 : "${TALOS_VERSION:?}" "${EXTENSIONS:?}" "${IMAGE:?}" "${ADMIN_PASSWORD:?}"
 CACHE_DIR="${CACHE_DIR:-.cache/installer}"
+wait_secs="${REGISTRY_WAIT:-900}"
 
 for tool in docker crane; do
   command -v "$tool" >/dev/null || { echo "нужен $tool (make tools)" >&2; exit 1; }
@@ -21,6 +23,17 @@ done
 registry="${IMAGE%%/*}"
 tag="${IMAGE##*:}"
 tar="$CACHE_DIR/installer-$tag.tar"
+
+# Реестр мог быть только что пересоздан: cloud-init ставит docker и тянет образы.
+echo "==> Ждём Artifact Keeper на http://$registry (до ${wait_secs}s)"
+deadline=$(( $(date +%s) + wait_secs ))
+until curl -fsS --connect-timeout 5 --max-time 10 "http://$registry/health" >/dev/null 2>&1; do
+  if (( $(date +%s) > deadline )); then
+    echo "Artifact Keeper не отвечает на http://$registry" >&2
+    exit 1
+  fi
+  sleep 10
+done
 
 if crane manifest --insecure "$IMAGE" >/dev/null 2>&1; then
   echo "==> $IMAGE уже в реестре"
