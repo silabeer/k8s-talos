@@ -17,6 +17,14 @@ provider "registry.terraform.io/hashicorp/local" {
   ]
 }
 
+provider "registry.terraform.io/hashicorp/random" {
+  version     = "3.9.0"
+  constraints = "~> 3.7"
+  hashes = [
+    "h1:OO+IuvQJSPmWdN8AyyIEvPJbLvDQpgX/zbktoa9KsJE=",
+  ]
+}
+
 provider "registry.terraform.io/siderolabs/talos" {
   version     = "0.11.0"
   constraints = "~> 0.11.0"

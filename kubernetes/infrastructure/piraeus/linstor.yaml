@@ -1,0 +1,92 @@
+# LINSTOR поверх Piraeus Operator на Talos.
+# Требует: расширение siderolabs/drbd в installer (talos_extensions), патч
+# infra/patches/linstor.yaml (модули ядра) и диск данных на воркерах
+# (worker.data_disk_gb, в Talos это /dev/vdb).
+# sync-wave 1: CR применяются после того, как оператор и его CRD стали Healthy.
+---
+apiVersion: piraeus.io/v1
+kind: LinstorCluster
+metadata:
+  name: linstorcluster
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  # Сателлиты и CSI только на worker: у control plane нет диска данных,
+  # и поды с томами туда всё равно не планируются.
+  nodeSelector:
+    node-role.kubernetes.io/worker: ""
+---
+# Из https://github.com/piraeusdatastore/piraeus-operator/blob/v2/docs/how-to/talos.md:
+# модуль drbd уже в ядре (расширение), systemd нет, /etc/lvm read-only.
+apiVersion: piraeus.io/v1
+kind: LinstorSatelliteConfiguration
+metadata:
+  name: talos-loader-override
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  podTemplate:
+    spec:
+      initContainers:
+        - name: drbd-shutdown-guard
+          $patch: delete
+        - name: drbd-module-loader
+          $patch: delete
+      volumes:
+        - name: run-systemd-system
+          $patch: delete
+        - name: run-drbd-shutdown-guard
+          $patch: delete
+        - name: systemd-bus-socket
+          $patch: delete
+        - name: lib-modules
+          $patch: delete
+        - name: usr-src
+          $patch: delete
+        - name: etc-lvm-backup
+          hostPath:
+            path: /var/etc/lvm/backup
+            type: DirectoryOrCreate
+        - name: etc-lvm-archive
+          hostPath:
+            path: /var/etc/lvm/archive
+            type: DirectoryOrCreate
+---
+# Пул хранения: LVM thin pool на диске данных. LINSTOR сам делает pvcreate/vgcreate.
+apiVersion: piraeus.io/v1
+kind: LinstorSatelliteConfiguration
+metadata:
+  name: storage-pool
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  nodeSelector:
+    node-role.kubernetes.io/worker: ""
+  storagePools:
+    - name: data
+      lvmThinPool: {}
+      source:
+        hostDevices:
+          - /dev/vdb
+---
+# Класс по умолчанию: две реплики DRBD, том создаётся при первом поде.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: linstor-r2
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+    argocd.argoproj.io/sync-wave: "1"
+provisioner: linstor.csi.linbit.com
+allowVolumeExpansion: true
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Delete
+parameters:
+  linstor.csi.linbit.com/storagePool: data
+  linstor.csi.linbit.com/placementCount: "2"
+  # Под запускается только там, где есть реплика: без лишнего сетевого хопа.
+  linstor.csi.linbit.com/allowRemoteVolumeAccess: "false"
+  csi.storage.k8s.io/fstype: ext4

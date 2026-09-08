@@ -23,9 +23,9 @@ variable "talos_version" {
 }
 
 variable "kubernetes_version" {
-  description = "Версия Kubernetes. null = версия по умолчанию для данного Talos."
+  description = "Версия Kubernetes. Задаём явно: провайдер Talos по умолчанию берёт версию из своего SDK, которая может быть новее, чем поддерживает talos_version."
   type        = string
-  default     = null
+  default     = "1.35.8"
 }
 
 variable "image_source" {
@@ -40,9 +40,15 @@ variable "image_source" {
 }
 
 variable "talos_extensions" {
-  description = "Системные расширения Talos для Image Factory. Учитываются только при image_source = factory."
+  description = "Системные расширения Talos (имена из каталога siderolabs/extensions, например siderolabs/drbd). При image_source = github installer с ними собирается локально через imager и кладётся в Artifact Keeper (см. registry.tf), при image_source = factory их включает Image Factory."
   type        = list(string)
-  default     = ["siderolabs/qemu-guest-agent"]
+  default     = []
+}
+
+variable "installer_image" {
+  description = "Готовый образ installer вместо автоматически собранного/стандартного. null = вычислить из image_source и talos_extensions."
+  type        = string
+  default     = null
 }
 
 variable "controlplane" {
@@ -67,12 +73,13 @@ variable "controlplane" {
 }
 
 variable "worker" {
-  description = "Параметры worker узлов."
+  description = "Параметры worker узлов. data_disk_gb > 0 добавляет отдельный диск (/dev/vdb) под LINSTOR."
   type = object({
-    count   = number
-    cores   = number
-    memory  = number
-    disk_gb = number
+    count        = number
+    cores        = number
+    memory       = number
+    disk_gb      = number
+    data_disk_gb = optional(number, 0)
   })
   default = {
     count   = 2
@@ -114,4 +121,54 @@ variable "apiserver_allowed_cidrs" {
   description = "Откуда разрешён доступ к kube-apiserver (порт 6443) через балансировщик."
   type        = list(string)
   default     = ["0.0.0.0/0"]
+}
+
+variable "registry" {
+  description = "Artifact Keeper: кэширующий прокси образов (Docker/OCI) и Helm-чартов на отдельной ВМ в той же подсети. Узлы Talos тянут все образы через него (machine.registries.mirrors), Argo CD берёт чарты."
+  type = object({
+    enabled     = bool
+    version     = string # тег образа backend (без v)
+    web_version = string # у образа web нет релизных тегов, только latest
+    cores       = number
+    memory      = number
+    disk_gb     = number
+  })
+  default = {
+    enabled     = true
+    version     = "1.8.2"
+    web_version = "latest"
+    cores       = 2
+    memory      = 4
+    disk_gb     = 30
+  }
+}
+
+variable "registry_ssh_public_key" {
+  description = "Публичный SSH-ключ для пользователя ubuntu на ВМ реестра (порт 22 открыт для admin_cidrs). null = без SSH."
+  type        = string
+  default     = null
+}
+
+variable "registry_docker_mirrors" {
+  description = "Зеркала OCI-реестров: хост -> upstream. На каждый хост создаётся remote-репозиторий Artifact Keeper с ключом из имени, а в Talos добавляется machine.registries.mirrors."
+  type        = map(string)
+  default = {
+    "docker.io"       = "https://registry-1.docker.io"
+    "ghcr.io"         = "https://ghcr.io"
+    "registry.k8s.io" = "https://registry.k8s.io"
+    "quay.io"         = "https://quay.io"
+    "gcr.io"          = "https://gcr.io"
+  }
+}
+
+variable "registry_helm_repos" {
+  description = "Remote Helm-репозитории: ключ -> upstream. В Chart.yaml umbrella-чартов repository указывает на http://<registry>/helm/<ключ>."
+  type        = map(string)
+  default = {
+    "helm-argo"           = "https://argoproj.github.io/argo-helm"
+    "helm-cilium"         = "https://helm.cilium.io"
+    "helm-jetstack"       = "https://charts.jetstack.io"
+    "helm-metrics-server" = "https://kubernetes-sigs.github.io/metrics-server/"
+    "helm-traefik"        = "https://traefik.github.io/charts"
+  }
 }

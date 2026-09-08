@@ -21,6 +21,16 @@ resource "yandex_compute_instance" "node" {
     }
   }
 
+  # Диск данных под LINSTOR (только worker): в Talos виден как /dev/vdb.
+  dynamic "secondary_disk" {
+    for_each = each.value.role == "worker" && var.worker.data_disk_gb > 0 ? [1] : []
+    content {
+      disk_id     = yandex_compute_disk.data[each.key].id
+      device_name = "data"
+      auto_delete = false
+    }
+  }
+
   network_interface {
     subnet_id          = yandex_vpc_subnet.this.id
     ip_address         = each.value.ip
@@ -41,5 +51,19 @@ resource "yandex_compute_instance" "node" {
   lifecycle {
     # Обновление Talos делается через `talosctl upgrade`, а не пересозданием ВМ.
     ignore_changes = [boot_disk[0].initialize_params[0].image_id]
+  }
+}
+
+resource "yandex_compute_disk" "data" {
+  for_each = var.worker.data_disk_gb > 0 ? local.workers : {}
+
+  name = "${each.key}-data"
+  zone = var.zone
+  type = "network-ssd"
+  size = var.worker.data_disk_gb
+
+  labels = {
+    cluster = var.cluster_name
+    role    = "data"
   }
 }

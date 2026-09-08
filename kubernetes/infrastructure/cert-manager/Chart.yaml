@@ -6,4 +6,4 @@ version: 0.1.0
 dependencies:
   - name: cert-manager
     version: v1.21.1
-    repository: https://charts.jetstack.io
+    repository: http://10.10.0.5/helm/helm-jetstack

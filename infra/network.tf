@@ -112,7 +112,24 @@ locals {
         predefined_target = "loadbalancer_healthchecks"
         description       = "Health check NLB"
       }
-    }
+    },
+    # ВМ реестра в той же группе: узлы ходят к ней по правилу internal.
+    var.registry.enabled ? {
+      registry_http = {
+        direction      = "ingress"
+        protocol       = "TCP"
+        port           = 80
+        v4_cidr_blocks = var.admin_cidrs
+        description    = "Artifact Keeper: UI/API для администратора и tofu"
+      }
+      registry_ssh = {
+        direction      = "ingress"
+        protocol       = "TCP"
+        port           = 22
+        v4_cidr_blocks = var.admin_cidrs
+        description    = "SSH на ВМ реестра"
+      }
+    } : {}
   )
 }
 

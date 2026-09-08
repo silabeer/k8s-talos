@@ -26,7 +26,7 @@ output "schematic_id" {
 
 output "installer_image" {
   description = "Образ для `talosctl upgrade --image`."
-  value       = local.installer_image
+  value       = local.install_image
 }
 
 output "kubeconfig_raw" {
@@ -38,4 +38,21 @@ output "kubeconfig_raw" {
 output "talosconfig" {
   value     = data.talos_client_configuration.this.talos_config
   sensitive = true
+}
+
+output "registry" {
+  description = "Artifact Keeper: адреса и созданные репозитории."
+  value = local.registry_enabled ? {
+    private_url = local.registry_url
+    public_url  = local.registry_public_url
+    bucket      = yandex_storage_bucket.registry[0].bucket
+    docker      = { for host, key in local.registry_docker_key : host => "${local.registry_url}/v2/${key}" }
+    helm        = { for key, _ in var.registry_helm_repos : key => "${local.registry_url}/helm/${key}" }
+  } : null
+}
+
+output "registry_admin_password" {
+  description = "Пароль admin в Artifact Keeper."
+  value       = local.registry_enabled ? random_password.registry_admin[0].result : null
+  sensitive   = true
 }

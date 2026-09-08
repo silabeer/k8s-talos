@@ -1,0 +1,114 @@
+#cloud-config
+# Artifact Keeper через docker compose. Минимальный набор: PostgreSQL, backend,
+# web UI и Caddy на :80. OpenSearch и сканеры (Trivy, OpenSCAP) для прокси не нужны.
+package_update: true
+packages:
+  - docker.io
+  - docker-compose-v2
+
+write_files:
+  - path: /opt/artifact-keeper/docker-compose.yml
+    permissions: "0644"
+    content: |
+      services:
+        postgres:
+          image: postgres:16-alpine
+          environment:
+            POSTGRES_USER: registry
+            POSTGRES_PASSWORD: ${db_password}
+            POSTGRES_DB: artifact_registry
+          volumes:
+            - postgres_data:/var/lib/postgresql/data
+          healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U registry -d artifact_registry"]
+            interval: 10s
+            timeout: 5s
+            retries: 5
+          restart: unless-stopped
+
+        backend:
+          image: ghcr.io/artifact-keeper/artifact-keeper-backend:${version}
+          depends_on:
+            postgres:
+              condition: service_healthy
+          env_file:
+            - .env
+          volumes:
+            - backend_data:/data/storage
+          healthcheck:
+            test: ["CMD", "curl", "-f", "http://localhost:8080/livez"]
+            interval: 30s
+            timeout: 10s
+            start_period: 30s
+            retries: 3
+          restart: unless-stopped
+
+        web:
+          image: ghcr.io/artifact-keeper/artifact-keeper-web:${web_version}
+          depends_on:
+            - backend
+          environment:
+            BACKEND_URL: http://backend:8080
+          restart: unless-stopped
+
+        caddy:
+          image: caddy:2-alpine
+          depends_on:
+            - backend
+            - web
+          ports:
+            - "80:80"
+          volumes:
+            - /opt/artifact-keeper/Caddyfile:/etc/caddy/Caddyfile:ro
+            - caddy_data:/data
+          restart: unless-stopped
+
+      volumes:
+        postgres_data:
+        backend_data:
+        caddy_data:
+
+  - path: /opt/artifact-keeper/Caddyfile
+    permissions: "0644"
+    content: |
+      {
+        auto_https off
+      }
+
+      :80 {
+        reverse_proxy /api/* backend:8080
+        reverse_proxy /health backend:8080
+        reverse_proxy /livez backend:8080
+        reverse_proxy /readyz backend:8080
+        reverse_proxy /metrics backend:8080
+        reverse_proxy /swagger-ui* backend:8080
+        reverse_proxy /v2 backend:8080
+        reverse_proxy /v2/* backend:8080
+        reverse_proxy /helm/* backend:8080
+        reverse_proxy web:3000
+      }
+
+  - path: /opt/artifact-keeper/.env
+    permissions: "0600"
+    content: |
+      DATABASE_URL=postgres://registry:${db_password}@postgres:5432/artifact_registry
+      BIND_ADDRESS=0.0.0.0:8080
+      ENVIRONMENT=production
+      RUST_LOG=info
+      JWT_SECRET=${jwt_secret}
+      ADMIN_PASSWORD=${admin_password}
+      # Базовый URL в WWW-Authenticate для containerd на узлах.
+      AK_EXTERNAL_URL=${private_url}
+      CORS_ORIGINS=${private_url}
+      AK_GUEST_ACCESS_ENABLED=true
+      STORAGE_BACKEND=s3
+      STORAGE_PATH=/data/storage
+      S3_ENDPOINT=https://storage.yandexcloud.net
+      S3_REGION=ru-central1
+      S3_BUCKET=${s3_bucket}
+      S3_ACCESS_KEY_ID=${s3_access_key}
+      S3_SECRET_ACCESS_KEY=${s3_secret_key}
+
+runcmd:
+  - systemctl enable --now docker
+  - cd /opt/artifact-keeper && docker compose up -d

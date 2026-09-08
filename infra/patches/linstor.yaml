@@ -1,0 +1,11 @@
+# Модули ядра для LINSTOR/DRBD (расширение siderolabs/drbd).
+# См. https://github.com/piraeusdatastore/piraeus-operator/blob/v2/docs/how-to/talos.md
+machine:
+  kernel:
+    modules:
+      - name: drbd
+        parameters:
+          - usermode_helper=disabled
+      - name: drbd_transport_tcp
+      # Нужен для lvmThinPool.
+      - name: dm-thin-pool

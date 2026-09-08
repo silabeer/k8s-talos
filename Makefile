@@ -5,6 +5,7 @@ SHELL := /bin/bash
 # недоступны из РФ. Провайдеры берутся с зеркала Yandex, а siderolabs/talos
 # (его на зеркале нет) скачивается с GitHub в локальное filesystem-зеркало.
 TF ?= tofu
+export TF
 REPO ?=
 TALOS_PROVIDER_VERSION ?= 0.11.0
 OS   := $(shell uname -s | tr '[:upper:]' '[:lower:]')
@@ -12,16 +13,23 @@ ARCH := $(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
 
 PROVIDERS_DIR := $(CURDIR)/.providers
 export TF_CLI_CONFIG_FILE := $(CURDIR)/.tofurc
+
+# Провайдер Talos и talosctl ходят на узлы по gRPC/TLS напрямую; через локальный
+# HTTP-прокси (HTTPS_PROXY=localhost:1081 и т.п.) рукопожатие не проходит.
+# Yandex API, зеркало провайдеров и GitHub из РФ доступны без прокси.
+unexport HTTP_PROXY HTTPS_PROXY http_proxy https_proxy ALL_PROXY all_proxy
+export NO_PROXY := *
+export no_proxy := *
 export KUBECONFIG := $(CURDIR)/infra/out/kubeconfig
 export TALOSCONFIG := $(CURDIR)/infra/out/talosconfig
 
-.PHONY: help tools providers set-repo infra bootstrap up check env destroy
+.PHONY: help tools providers set-repo infra bootstrap up check env registry replace destroy
 
 help: ## Список целей
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
 
-tools: ## Установить opentofu, talosctl, helm, kubectl, zstd, qemu-img, yc (macOS)
-	brew install opentofu siderolabs/tap/talosctl helm kubectl zstd qemu
+tools: ## Установить opentofu, talosctl, helm, kubectl, zstd, qemu-img, crane, yc (macOS)
+	brew install opentofu siderolabs/tap/talosctl helm kubectl zstd qemu crane
 	@command -v yc >/dev/null || curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
 
 providers: $(TF_CLI_CONFIG_FILE) ## Скачать провайдер talos с GitHub и настроить зеркала
@@ -57,6 +65,14 @@ check: ## Проверить состояние кластера
 env: ## Показать export для kubectl/talosctl
 	@echo "export KUBECONFIG=$(KUBECONFIG)"
 	@echo "export TALOSCONFIG=$(TALOSCONFIG)"
+
+registry: ## Адрес и пароль Artifact Keeper
+	@cd infra && $(TF) output -json registry | python3 -c 'import sys,json; d=json.load(sys.stdin); print("UI:", d["public_url"]); print("user: admin")'
+	@cd infra && echo "password: $$($(TF) output -raw registry_admin_password)"
+
+replace: providers ## Пересоздать ВМ, не открывшие Talos API: make replace NODES="talos-w-1 talos-w-2"
+	@test -n "$(NODES)" || (echo 'Укажите NODES="talos-w-1 talos-w-2"'; exit 1)
+	cd infra && $(TF) apply $(foreach n,$(NODES),-replace='yandex_compute_instance.node["$(n)"]')
 
 destroy: providers ## Снести инфраструктуру
 	cd infra && $(TF) destroy

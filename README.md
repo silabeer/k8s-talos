@@ -13,13 +13,15 @@ Argo CD разворачивает всё внутри кластера из э�
 | Traefik (ingress) | chart 41.4.0 | Argo CD |
 | cert-manager + Let's Encrypt | v1.21.1 | Argo CD |
 | metrics-server + kubelet-serving-cert-approver | 3.14.0 / v0.12.0 | Argo CD |
+| Piraeus Operator + LINSTOR (PV) | v2.11.0 | Argo CD |
 | whoami (демо) | | Argo CD |
+| Artifact Keeper (прокси образов и чартов) | 1.8.2 | `infra/registry.tf` (отдельная ВМ) |
 
 Топология: 3 control plane + N worker в одной зоне, внешний NLB на `6443` (endpoint
 кластера) и внешний NLB на `80/443` → NodePort Traefik на worker-узлах.
 
 ```
-infra/          OpenTofu: VPC, security group, образ Talos, ВМ, NLB, Talos machine config, bootstrap
+infra/          OpenTofu: VPC, security group, образ Talos, ВМ, NLB, реестр, Talos machine config, bootstrap
 bootstrap/      bootstrap.sh: helm install umbrella-чартов cilium и argocd из kubernetes/infrastructure/
 kubernetes/
   bootstrap/    AppProject'ы и ApplicationSet'ы (root app указывает сюда)
@@ -47,6 +49,11 @@ kubernetes/
    с зеркалом Yandex для остальных провайдеров. Makefile экспортирует
    `TF_CLI_CONFIG_FILE`, руками ничего настраивать не нужно. Если запускаете
    `tofu` напрямую: `export TF_CLI_CONFIG_FILE=$PWD/.tofurc`.
+
+Прокси: если в шелле выставлены `HTTP_PROXY`/`HTTPS_PROXY`, Makefile их снимает для
+своих команд. Провайдер Talos и talosctl не умеют gRPC через HTTP-прокси, а всё
+остальное (Yandex API, зеркало провайдеров, GitHub) из РФ доступно напрямую.
+При ручном запуске `tofu`/`talosctl` делайте `unset HTTPS_PROXY HTTP_PROXY`.
 
 ## Запуск
 
@@ -98,12 +105,123 @@ DNS: A-записи `argocd.<domain>`, `whoami.<domain>` → `tofu -chdir=infra 
 - `image_id` ВМ в `ignore_changes`: обновление Talos делается через `talosctl upgrade`,
   а не пересозданием ВМ.
 
+## Реестр Artifact Keeper
+
+Узлы не тянут образы напрямую из интернета: все OCI-реестры (`docker.io`, `ghcr.io`,
+`registry.k8s.io`, `quay.io`, `gcr.io`) и Helm-репозитории чартов проксируются через
+[Artifact Keeper](https://github.com/artifact-keeper/artifact-keeper) на отдельной ВМ
+`<cluster>-registry` (`10.10.0.5`, Ubuntu 24.04, docker compose). Это кэш, а не
+air-gap: у ВМ реестра есть NAT, у узлов тоже (нужен для kube-apiserver через NLB и
+как запасной путь, если реестр лежит).
+
+- **Образы.** На каждый upstream создаётся remote-репозиторий (`docker-io`, `ghcr-io`, ...),
+  а в machine config узлов попадает `machine.registries.mirrors` с `overridePath: true`:
+  containerd ходит в `http://10.10.0.5/v2/<ключ>/<образ>`. Имена образов в манифестах
+  не меняются. Через реестр идёт и installer Talos, поэтому ВМ реестра создаётся до узлов.
+- **Чарты.** Remote Helm-репозитории `helm-*`, в `Chart.yaml` umbrella-чартов
+  `repository: http://10.10.0.5/helm/<ключ>`. `bootstrap.sh` с рабочей машины подменяет
+  приватный адрес на публичный во временной копии чарта.
+- **Хранилище.** Кэш лежит в бакете Object Storage (`STORAGE_BACKEND=s3`), ВМ можно
+  пересоздать без потери кэша. PostgreSQL на ВМ, OpenSearch и сканеры не ставятся.
+- **Настройка.** `registry` и `registry_docker_mirrors`/`registry_helm_repos` в tfvars.
+  Репозитории создаёт `infra/scripts/registry-setup.sh` через REST API (порт 80 открыт
+  для `admin_cidrs`). Доступ в UI: `make registry`. SSH: `registry_ssh_public_key`.
+- **Отключить:** `registry = { enabled = false, ... }` и вернуть в `Chart.yaml`
+  upstream-адреса из `registry_helm_repos`.
+
+Ограничения: git (GitHub) по-прежнему нужен Argo CD напрямую; Let's Encrypt и NTP
+тоже ходят в интернет. Образ web UI Artifact Keeper релизных тегов не имеет, поэтому
+`web_version = "latest"`. Если меняете `subnet_cidr`, поменяйте `10.10.0.5` в `Chart.yaml`
+(адрес реестра = пятый в подсети).
+
+## Хранилище: LINSTOR через Piraeus Operator
+
+`Service type=LoadBalancer` и сетевые диски Yandex как PV не работают без CCM/CSI,
+поэтому PV делает LINSTOR: реплицированные DRBD-тома поверх локальных дисков воркеров.
+
+Что для этого включено:
+
+- **Расширение ядра.** `talos_extensions = ["siderolabs/drbd"]` в tfvars. Модуль DRBD
+  собран в installer, поэтому `make infra` сначала собирает installer локально и кладёт
+  его в Artifact Keeper (см. следующий раздел), а потом ставит узлы уже с ним.
+- **Модули ядра.** `infra/patches/linstor.yaml` (drbd с `usermode_helper=disabled`,
+  drbd_transport_tcp, dm-thin-pool) подмешивается автоматически, когда в
+  `talos_extensions` есть drbd.
+- **Диски.** `worker.data_disk_gb` создаёт на каждом воркере отдельный network-ssd,
+  в Talos это `/dev/vdb`. Диск с `auto_delete = false`: пересоздание ВМ данные не теряет.
+- **Оператор.** `kubernetes/infrastructure/piraeus/`: манифесты оператора v2.11.0
+  вендорены (`operator.yaml`), рядом `linstor.yaml` с `LinstorCluster`,
+  overrides для Talos из гайда Piraeus, пул `data` (LVM thin pool на `/dev/vdb`)
+  и StorageClass `linstor-r2` по умолчанию: две реплики, `WaitForFirstConsumer`,
+  `allowRemoteVolumeAccess: false` (под едет туда, где лежит реплика).
+
+Проверка после `make bootstrap`:
+
+```bash
+kubectl -n piraeus-datastore get pods
+kubectl -n piraeus-datastore exec deploy/linstor-controller -- linstor storage-pool list
+talosctl -n <worker-ip> read /proc/modules | grep drbd
+kubectl get sc
+```
+
+Замечания: минимум два воркера (реплик две), `talosctl upgrade` при смене расширений
+обязателен, обновление оператора — перерендерить `operator.yaml` с новым `ref`
+(команда записана в `kustomization.yaml`).
+
+## Свой installer с расширениями (локальная сборка)
+
+Всё описанное ниже делает `make infra` автоматически, если в tfvars задан
+`talos_extensions` (нужны `docker` и `crane`, ставятся через `make tools`):
+`infra/scripts/build-installer.sh` собирает installer через imager и пушит его в
+hosted-репозиторий `talos` в Artifact Keeper, а `machine.install.image` получает
+адрес `10.10.0.5/talos/installer:<версия>-<хэш набора расширений>`. Тарбол кэшируется
+в `infra/.cache/installer/`, повторная сборка пропускается, если образ уже в реестре.
+Готовый образ можно задать напрямую через `installer_image`.
+
+Ручная сборка (если нужно собрать вне OpenTofu). Расширения Talos живут в образе **installer**,
+а не в дисковом образе. Узел грузится с ванильного `metal-amd64.raw.zst`, а при
+установке и при каждом `talosctl upgrade` на диск пишется содержимое
+`machine.install.image`. Поэтому пересобирать нужно только installer, Image Factory
+(медленная из РФ) не нужна. Нужен docker, сборка занимает секунды.
+
+```bash
+# 1. Версии расширений под конкретный Talos берутся из каталога siderolabs/extensions
+crane export ghcr.io/siderolabs/extensions:v1.12.12 - | tar x -O image-digests | grep qemu
+#   для v1.12.12: ghcr.io/siderolabs/qemu-guest-agent:10.2.0
+#                 ghcr.io/siderolabs/iscsi-tools:v0.2.0
+#                 ghcr.io/siderolabs/util-linux-tools:2.41.4
+
+# 2. Сборка installer (на Apple Silicon --arch amd64 обязателен)
+mkdir -p _out
+docker run --rm -v "$PWD/_out:/out" ghcr.io/siderolabs/imager:v1.12.12 installer \
+  --arch amd64 \
+  --system-extension-image ghcr.io/siderolabs/qemu-guest-agent:10.2.0 \
+  --system-extension-image ghcr.io/siderolabs/iscsi-tools:v0.2.0
+# -> _out/installer-amd64.tar (~130 МБ). Есть также --extra-kernel-arg и --meta.
+
+# 3. Публикация. Вариант А: свой ghcr.io (узлы уже ходят туда через реестр)
+crane push _out/installer-amd64.tar ghcr.io/<user>/talos-installer:v1.12.12-qga
+# Вариант Б: hosted-репозиторий в Artifact Keeper (см. ниже, что для этого нужно)
+crane auth login <публичный ip реестра> -u admin -p "$(tofu -chdir=infra output -raw registry_admin_password)"
+crane push --insecure _out/installer-amd64.tar <публичный ip реестра>/talos/installer:v1.12.12-qga
+```
+
+Дальше образ прописывается в `machine.install.image` (сейчас это `local.installer_image`
+в `infra/talos.tf`), `make infra` обновляет конфиг, и узлы обновляются по одному:
+`talosctl upgrade --nodes <ip> --image <образ>`. Дисковый образ тем же imager собирается
+профилем `metal` с теми же `--system-extension-image`, но требует `--privileged -v /dev:/dev`
+и в этой схеме не нужен.
+
+Hosted-репозиторий `talos` и http-зеркало для самого `10.10.0.5` в
+`machine.registries.mirrors` (без него containerd пошёл бы к реестру по HTTPS)
+создаются автоматически.
+
 ## Повседневные операции
 
 **Добавить worker:** увеличить `worker.count` → `make infra`. Узел сам попадёт в NLB.
 
 **Обновить Talos:** поднять `talos_version` → `make infra` (создаст новый образ и
-installer), затем по одному узлу:
+installer; при своём installer с расширениями пересоберите и его), затем по одному узлу:
 ```bash
 talosctl upgrade --nodes <ip> --image $(tofu -chdir=infra output -raw installer_image)
 ```
@@ -125,10 +243,10 @@ Yandex Lockbox, или SOPS + age через argocd-vault-plugin / ksops.
 
 - Одна зона доступности. Для мультизонности нужны подсети в каждой зоне и по target group.
 - Нет Yandex Cloud Controller Manager и CSI: `Service type=LoadBalancer` и
-  `PersistentVolume` на сетевых дисках не работают из коробки. Для PV самое простое:
-  Longhorn или локальные диски; для NLB: OpenTofu, как здесь.
+  `PersistentVolume` на сетевых дисках не работают из коробки. PV решает LINSTOR
+  (см. выше), NLB создаются в OpenTofu.
 - Публичные IP на узлах для NAT. Квота `vpc.externalAddresses.count` по умолчанию 8:
-  два балансировщика плюс до шести узлов. Замена: NAT-шлюз Yandex и bastion/VPN для Talos API.
+  два балансировщика, ВМ реестра и до пяти узлов. Замена: NAT-шлюз Yandex и bastion/VPN для Talos API.
 - Квота `ylb.networkLoadBalancers.count` по умолчанию 2, оба уже заняты.
 - State OpenTofu локальный (`infra/terraform.tfstate`, в `.gitignore`). Для команды:
   S3-backend в Object Storage, шаблон в `infra/versions.tf`.
@@ -140,5 +258,7 @@ talosctl -n <private-ip> dashboard         # консоль узла
 talosctl -n <private-ip> logs kubelet
 talosctl -n <private-ip> get members       # discovery
 yc compute instance get-serial-port-output <name>   # если Talos не поднялся
+ssh ubuntu@$(tofu -chdir=infra output -json registry | jq -r .public_url | sed 's#http://##')  # реестр
+sudo docker compose -f /opt/artifact-keeper/docker-compose.yml logs backend        # на ВМ реестра
 kubectl -n argocd get applications          # состояние GitOps
 ```

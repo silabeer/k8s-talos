@@ -6,4 +6,4 @@ version: 0.1.0
 dependencies:
   - name: metrics-server
     version: 3.14.0
-    repository: https://kubernetes-sigs.github.io/metrics-server/
+    repository: http://10.10.0.5/helm/helm-metrics-server

@@ -13,7 +13,7 @@ locals {
   patch_dynamic = {
     controlplane = yamlencode({
       machine = {
-        install = { image = local.installer_image }
+        install = { image = local.install_image }
         kubelet = { nodeIP = { validSubnets = [var.subnet_cidr] } }
       }
       cluster = {
@@ -22,7 +22,7 @@ locals {
     })
     worker = yamlencode({
       machine = {
-        install = { image = local.installer_image }
+        install = { image = local.install_image }
         kubelet = { nodeIP = { validSubnets = [var.subnet_cidr] } }
       }
     })
@@ -32,6 +32,13 @@ locals {
 data "talos_machine_configuration" "this" {
   for_each = local.nodes
 
+  lifecycle {
+    precondition {
+      condition     = !(local.custom_installer && !local.registry_enabled)
+      error_message = "talos_extensions при image_source = github требуют registry.enabled = true: собранный installer публикуется в Artifact Keeper."
+    }
+  }
+
   cluster_name       = var.cluster_name
   cluster_endpoint   = local.cluster_endpoint
   machine_type       = each.value.role
@@ -39,7 +46,7 @@ data "talos_machine_configuration" "this" {
   talos_version      = var.talos_version
   kubernetes_version = var.kubernetes_version
 
-  config_patches = [
+  config_patches = concat([
     local.patch_common,
     local.patch_role[each.value.role],
     local.patch_dynamic[each.value.role],
@@ -47,11 +54,29 @@ data "talos_machine_configuration" "this" {
     # не добавит его в сертификат API. Добавляем явно.
     yamlencode({
       machine = {
-        network  = { hostname = each.key }
         certSANs = [local.node_public_ip[each.key]]
       }
     }),
-  ]
+    # Генератор кладёт документ HostnameConfig с auto: stable, а поле
+    # machine.network.hostname с ним конфликтует. Меняем документ целиком:
+    # сначала удаляем сгенерированный, затем добавляем свой.
+    <<-EOT
+      apiVersion: v1alpha1
+      kind: HostnameConfig
+      $patch: delete
+    EOT
+    ,
+    yamlencode({
+      apiVersion = "v1alpha1"
+      kind       = "HostnameConfig"
+      hostname   = each.key
+    }),
+    ],
+    # Зеркала образов через Artifact Keeper (см. registry.tf).
+    local.registry_enabled ? [local.patch_registry] : [],
+    # Модули ядра DRBD для LINSTOR, если есть расширение drbd.
+    contains(var.talos_extensions, "siderolabs/drbd") ? [file("${path.module}/patches/linstor.yaml")] : [],
+  )
 }
 
 data "talos_client_configuration" "this" {
@@ -68,6 +93,9 @@ resource "talos_machine_configuration_apply" "this" {
   depends_on = [
     yandex_compute_instance.node,
     yandex_vpc_security_group_rule.this,
+    # Installer и образы control plane тянутся через реестр, он должен быть готов.
+    terraform_data.registry_repos,
+    terraform_data.installer,
   ]
 
   client_configuration        = talos_machine_secrets.this.client_configuration

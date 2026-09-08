@@ -15,11 +15,16 @@ controlplane = {
 }
 
 worker = {
-  count   = 2
-  cores   = 2
-  memory  = 4
-  disk_gb = 40
+  count        = 2
+  cores        = 2
+  memory       = 4
+  disk_gb      = 40
+  data_disk_gb = 50 # отдельный диск под LINSTOR (/dev/vdb); 0 = без диска
 }
+
+# Расширения Talos. drbd нужен для LINSTOR (kubernetes/infrastructure/piraeus).
+# Installer с ними собирается локально (docker + crane) и публикуется в Artifact Keeper.
+talos_extensions = ["siderolabs/drbd"]
 
 # Для экономии на тестовом стенде можно 20 или 50.
 core_fraction = 100
@@ -27,3 +32,14 @@ core_fraction = 100
 # Статический публичный IP на каждый узел. Квота vpc.externalStaticAddresses.count
 # по умолчанию 2 и уходит на балансировщики; включайте после запроса квоты.
 node_static_ips = false
+
+# Artifact Keeper: прокси образов и чартов на отдельной ВМ (см. README).
+registry = {
+  enabled     = true
+  version     = "1.8.2"
+  web_version = "latest"
+  cores       = 2
+  memory      = 4
+  disk_gb     = 30
+}
+# registry_ssh_public_key = "ssh-ed25519 AAAA... you@host"

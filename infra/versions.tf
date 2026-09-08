@@ -18,6 +18,10 @@ terraform {
       source  = "registry.terraform.io/hashicorp/local"
       version = "~> 2.5"
     }
+    random = {
+      source  = "registry.terraform.io/hashicorp/random"
+      version = "~> 3.7"
+    }
   }
 
   # Для командной работы вынесите state в Object Storage (S3-совместимый backend):

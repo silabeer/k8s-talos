@@ -6,4 +6,4 @@ version: 0.1.0
 dependencies:
   - name: traefik
     version: 41.4.0
-    repository: https://traefik.github.io/charts
+    repository: http://10.10.0.5/helm/helm-traefik

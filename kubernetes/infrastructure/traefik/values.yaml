@@ -19,3 +19,7 @@ traefik:
     kubernetesIngress:
       publishedService:
         enabled: false
+  # Адрес в status Ingress: без него Argo CD держит приложения с Ingress
+  # в состоянии Progressing. Это ingress_ip из outputs стейджа infra/.
+  additionalArguments:
+    - --providers.kubernetesingress.ingressendpoint.ip=93.77.187.221
