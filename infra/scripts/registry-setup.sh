@@ -30,22 +30,33 @@ token=$(curl -fsS --max-time 30 -H 'Content-Type: application/json' -d "$login_b
   | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["access_token"])')
 auth=(-H "Authorization: Bearer $token" -H 'Content-Type: application/json')
 
+# Тело запроса готовит python: пустое поле в tab-разделённой строке read не
+# различает (tab — пробельный символ, и подряд идущие разделители схлопываются),
+# поэтому передаём готовый JSON и только непустые поля для сообщения.
 echo "$REPOS" | python3 -c '
 import sys, json
 for r in json.load(sys.stdin):
-    print(r["key"], r["format"], r.get("repo_type") or "remote", r.get("upstream_url") or "", r["name"], sep="\t")
-' | while IFS=$'\t' read -r key format rtype upstream name; do
+    body = {
+        "key": r["key"],
+        "name": r["name"],
+        "format": r["format"],
+        "repo_type": r.get("repo_type") or "remote",
+        "is_public": True,
+        "allow_anonymous_access": True,
+    }
+    if r.get("upstream_url"):
+        body["upstream_url"] = r["upstream_url"]
+    label = "%s %s%s" % (body["repo_type"], body["format"],
+                         " <- " + body["upstream_url"] if r.get("upstream_url") else "")
+    print(r["key"], label, json.dumps(body, separators=(",", ":")), sep="\t")
+' | while IFS=$'\t' read -r key label body; do
   code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "${auth[@]}" "$api/repositories/$key")
   if [[ "$code" == "200" ]]; then
     echo "    $key: уже есть"
     continue
   fi
-  body=$(python3 -c 'import json,sys; k,f,t,u,n=sys.argv[1:]
-d={"key":k,"name":n,"format":f,"repo_type":t,"is_public":True,"allow_anonymous_access":True}
-if u: d["upstream_url"]=u
-print(json.dumps(d))' "$key" "$format" "$rtype" "$upstream" "$name")
   curl -fsS --max-time 60 "${auth[@]}" -d "$body" "$api/repositories" >/dev/null
-  echo "    $key: создан ($rtype $format${upstream:+ <- $upstream})"
+  echo "    $key: создан ($label)"
 done
 
 echo "==> Готово"
