@@ -1,3 +1,6 @@
 machine:
   nodeLabels:
-    node-role.kubernetes.io/worker: ""
+    # Метку с префиксом node-role.kubernetes.io/ kubelet ставить не может:
+    # её запрещает admission-плагин NodeRestriction (как и любую другую в
+    # пространстве kubernetes.io вне разрешённого списка). Поэтому своя.
+    role: worker
