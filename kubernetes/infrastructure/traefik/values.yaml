@@ -5,8 +5,11 @@ traefik:
   deployment:
     kind: DaemonSet
   service:
-    type: NodePort
+    # В чарте 41.x тип задаётся именно внутри spec; service.type чарт игнорирует,
+    # и сервис молча остаётся LoadBalancer, который в Yandex без CCM навсегда
+    # ждёт внешний адрес (Argo CD держит приложение в Progressing).
     spec:
+      type: NodePort
       # Сохраняем исходный IP клиента.
       externalTrafficPolicy: Local
   ports:
