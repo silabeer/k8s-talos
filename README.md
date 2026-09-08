@@ -10,7 +10,8 @@ Argo CD разворачивает всё внутри кластера из э�
 | Talos Linux | v1.12.12 (K8s 1.35) | `infra/` (OpenTofu) |
 | Cilium (CNI, без kube-proxy) | 1.20.1 | `bootstrap/bootstrap.sh` один раз, дальше Argo CD |
 | Argo CD | chart 10.8.0 / v3.5.2 | `bootstrap/bootstrap.sh` один раз, дальше Argo CD |
-| Traefik (ingress) | chart 41.4.0 | Argo CD |
+| Traefik (Gateway API) | chart 41.4.0 / v3.7.12 | Argo CD |
+| Gateway API CRD | v1.6.2 (standard) | Argo CD |
 | cert-manager + Let's Encrypt | v1.21.1 | Argo CD |
 | metrics-server + kubelet-serving-cert-approver | 3.14.0 / v0.12.0 | Argo CD |
 | Piraeus Operator + LINSTOR (PV) | v2.11.0 | Argo CD |
@@ -19,6 +20,10 @@ Argo CD разворачивает всё внутри кластера из э�
 
 Топология: 3 control plane + N worker в одной зоне, внешний NLB на `6443` (endpoint
 кластера) и внешний NLB на `80/443` → NodePort Traefik на worker-узлах.
+
+Вход в кластер описывается через Gateway API: Traefik работает контроллером
+GatewayClass `traefik` и держит общий Gateway в неймспейсе `traefik`, а приложения
+подключаются к нему объектами HTTPRoute. Провайдер Ingress выключен.
 
 ```
 infra/          OpenTofu: VPC, security group, образ Talos, ВМ, NLB, реестр, Talos machine config, bootstrap
@@ -78,7 +83,9 @@ eval "$(make env)"
 make check
 ```
 
-DNS: A-записи `argocd.<domain>`, `whoami.<domain>` → `tofu -chdir=infra output ingress_ip`.
+DNS: A-записи `argocd.<domain>`, `whoami.<domain>`, `pv-demo.<domain>` →
+`tofu -chdir=infra output ingress_ip`. Этот же адрес нужно записать в values Traefik:
+`make set-ingress-ip`, затем коммит и push.
 Пока домена нет, Argo CD доступен через `kubectl -n argocd port-forward svc/argocd-server 8080:80`,
 пароль admin: `kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d`.
 
@@ -175,6 +182,49 @@ kubectl get sc
 модуль DRBD действительно загружен: `linstor node info` должен показывать `+` в
 колонке DRBD, а `talosctl -n <ip> read /proc/modules` — строки drbd. Пустой вывод
 означает, что узел стоит на образе без расширения.
+
+## Вход через Gateway API
+
+CRD ставятся приложением `gateway-api` (канал standard, v1.6.2; Traefik 3.7 собран
+с библиотекой gateway-api v1.6.1). Их же накатывает `bootstrap.sh`, чтобы на чистом
+кластере Traefik не стартовал раньше CRD. Общий Gateway создаёт чарт Traefik,
+listener `web` открыт для маршрутов из любых неймспейсов.
+
+Маршрут приложения выглядит так (см. `kubernetes/apps/whoami/httproute.yaml`):
+
+```yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: whoami
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: traefik
+      namespace: traefik
+      sectionName: web
+  hostnames: [whoami.example.com]
+  rules:
+    - matches: [{path: {type: PathPrefix, value: /}}]
+      backendRefs: [{group: "", kind: Service, name: whoami, port: 80, weight: 1}]
+```
+
+Две тонкости, на которые легко наступить:
+
+- `group`, `kind` и `weight` выписаны явно, хотя это значения по умолчанию.
+  Их дописывает API-сервер, а Argo CD схемы CRD не знает и считает дописанные
+  поля расхождением: приложение навсегда остаётся OutOfSync, при том что
+  `kubectl diff` и `argocd app diff` расхождений не показывают.
+- Адрес балансировщика попадает в `status.addresses` Gateway из аргумента
+  `--providers.kubernetesgateway.statusaddress.ip`. Без него Argo CD держит
+  приложения с HTTPRoute в Progressing. Проставляется целью `make set-ingress-ip`
+  после `make infra`, затем нужен коммит и push.
+
+HTTPS пока не настроен: listener только `web`. Для TLS нужно включить в
+cert-manager поддержку Gateway API, добавить listener `websecure` с
+`certificateRefs` и аннотацию `cert-manager.io/cluster-issuer` на Gateway.
+Домены в манифестах — заглушки `*.example.com`.
 
 ## Свой installer с расширениями (локальная сборка)
 
