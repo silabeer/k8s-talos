@@ -133,7 +133,7 @@ resource "yandex_compute_instance" "registry" {
     initialize_params {
       image_id = data.yandex_compute_image.ubuntu[0].id
       size     = var.registry.disk_gb
-      type     = "network-ssd"
+      type     = var.registry.disk_type
     }
   }
 

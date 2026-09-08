@@ -73,13 +73,14 @@ variable "controlplane" {
 }
 
 variable "worker" {
-  description = "Параметры worker узлов. data_disk_gb > 0 добавляет отдельный диск (/dev/vdb) под LINSTOR."
+  description = "Параметры worker узлов. data_disk_gb > 0 добавляет отдельный диск (/dev/vdb) под LINSTOR. У network-ssd и network-hdd отдельные квоты (по умолчанию 200 и 500 ГиБ), поэтому диск данных по умолчанию на HDD."
   type = object({
-    count        = number
-    cores        = number
-    memory       = number
-    disk_gb      = number
-    data_disk_gb = optional(number, 0)
+    count          = number
+    cores          = number
+    memory         = number
+    disk_gb        = number
+    data_disk_gb   = optional(number, 0)
+    data_disk_type = optional(string, "network-hdd")
   })
   default = {
     count   = 2
@@ -132,6 +133,7 @@ variable "registry" {
     cores       = number
     memory      = number
     disk_gb     = number
+    disk_type   = optional(string, "network-hdd") # артефакты лежат в Object Storage, SSD-квоту не тратим
   })
   default = {
     enabled     = true

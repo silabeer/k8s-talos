@@ -59,7 +59,7 @@ resource "yandex_compute_disk" "data" {
 
   name = "${each.key}-data"
   zone = var.zone
-  type = "network-ssd"
+  type = var.worker.data_disk_type
   size = var.worker.data_disk_gb
 
   labels = {

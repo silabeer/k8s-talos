@@ -20,6 +20,7 @@ worker = {
   memory       = 4
   disk_gb      = 40
   data_disk_gb = 50 # отдельный диск под LINSTOR (/dev/vdb); 0 = без диска
+  # data_disk_type = "network-ssd"  # быстрее, но тратит квоту compute.ssdDisks.size
 }
 
 # Расширения Talos. drbd нужен для LINSTOR (kubernetes/infrastructure/piraeus).
