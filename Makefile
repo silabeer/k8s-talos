@@ -25,7 +25,7 @@ CLUSTER ?= east
 export KUBECONFIG := $(CURDIR)/infra/out/$(CLUSTER)/kubeconfig
 export TALOSCONFIG := $(CURDIR)/infra/out/$(CLUSTER)/talosconfig
 
-.PHONY: help tools providers set-repo set-ingress-ip infra bootstrap up check env registry upgrade replace destroy
+.PHONY: help tools providers set-repo set-ingress-ip infra bootstrap up status check env registry upgrade replace destroy
 
 help: ## Список целей
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -65,6 +65,19 @@ bootstrap: ## Стейдж 2: Cilium + Argo CD в кластере CLUSTER (по
 up: infra ## Поднять всё: инфраструктура и bootstrap обоих кластеров
 	$(MAKE) bootstrap CLUSTER=east
 	$(MAKE) bootstrap CLUSTER=west
+
+status: ## Сводка по стенду: адреса кластеров и реестра
+	@cd infra && $(TF) output -json clusters | python3 -c 'import sys,json; \
+	d=json.load(sys.stdin); \
+	[print("%-6s endpoint %-28s ingress %s" % (k, v["endpoint"], v["ingress_ip"])) for k,v in sorted(d.items())]'
+	@cd infra && $(TF) output -json registry | python3 -c 'import sys,json; \
+	d=json.load(sys.stdin) or {}; print("реестр UI", d.get("public_url",""), "изнутри", d.get("private_url",""))'
+	@echo
+	@for c in $$(cd infra && $(TF) output -json clusters | python3 -c 'import sys,json; print(" ".join(sorted(json.load(sys.stdin))))'); do \
+	  printf '%-6s ' "$$c"; \
+	  KUBECONFIG=$(CURDIR)/infra/out/$$c/kubeconfig kubectl get nodes --no-headers 2>/dev/null \
+	    | awk '{printf "%s=%s ", $$1, $$2} END {print ""}' || echo "kubeconfig недоступен"; \
+	done
 
 check: ## Проверить состояние кластера CLUSTER
 	talosctl health --wait-timeout 5m

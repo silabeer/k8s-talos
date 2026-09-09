@@ -128,6 +128,21 @@ resource "talos_cluster_kubeconfig" "this" {
   endpoint             = local.node_public_ip[local.first_controlplane]
 }
 
+# `make infra` не должен отдавать управление, пока control plane не готов.
+resource "terraform_data" "wait_apiserver" {
+  depends_on = [talos_cluster_kubeconfig.this]
+
+  triggers_replace = talos_machine_bootstrap.this.id
+
+  provisioner "local-exec" {
+    command = "${var.scripts_dir}/wait-apiserver.sh"
+    environment = {
+      CLUSTER  = var.name
+      ENDPOINT = local.cluster_endpoint
+    }
+  }
+}
+
 resource "local_sensitive_file" "kubeconfig" {
   content         = talos_cluster_kubeconfig.this.kubeconfig_raw
   filename        = "${var.out_dir}/kubeconfig"
