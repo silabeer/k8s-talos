@@ -25,13 +25,13 @@ CLUSTER ?= east
 export KUBECONFIG := $(CURDIR)/infra/out/$(CLUSTER)/kubeconfig
 export TALOSCONFIG := $(CURDIR)/infra/out/$(CLUSTER)/talosconfig
 
-.PHONY: help tools providers set-repo set-ingress-ip infra bootstrap up status check env registry upgrade replace destroy
+.PHONY: help tools providers set-repo set-ingress-ip infra bootstrap mesh up status check env registry upgrade replace destroy
 
 help: ## Список целей
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
 
 tools: ## Установить opentofu, talosctl, helm, kubectl, zstd, qemu-img, crane, yc (macOS)
-	brew install opentofu siderolabs/tap/talosctl helm kubectl zstd qemu crane
+	brew install opentofu siderolabs/tap/talosctl helm kubectl zstd qemu crane istioctl
 	@command -v yc >/dev/null || curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
 
 providers: $(TF_CLI_CONFIG_FILE) ## Скачать провайдер talos с GitHub и настроить зеркала
@@ -62,9 +62,10 @@ infra: providers ## Стейдж 1: Yandex Cloud + Talos (tofu apply)
 bootstrap: ## Стейдж 2: Cilium + Argo CD в кластере CLUSTER (по умолчанию east)
 	./bootstrap/bootstrap.sh $(CLUSTER)
 
-up: infra ## Поднять всё: инфраструктура и bootstrap обоих кластеров
+up: infra ## Поднять всё: инфраструктура, bootstrap обоих кластеров и mesh
 	$(MAKE) bootstrap CLUSTER=east
 	$(MAKE) bootstrap CLUSTER=west
+	$(MAKE) mesh
 
 status: ## Сводка по стенду: адреса кластеров и реестра
 	@cd infra && $(TF) output -json clusters | python3 -c 'import sys,json; \
@@ -95,6 +96,9 @@ upgrade: ## Обновить узлы до текущего installer (по од
 	  echo "==> $$ip"; \
 	  talosctl --nodes $$ip upgrade --image "$$image" --wait --timeout 15m; \
 	done
+
+mesh: ## Стейдж 3: связать кластеры в mesh Istio (общий CA и обмен доступом)
+	./bootstrap/mesh.sh
 
 registry: ## Адрес и пароль Artifact Keeper
 	@cd infra && $(TF) output -json registry | python3 -c 'import sys,json; d=json.load(sys.stdin); print("UI:", d["public_url"]); print("user: admin")'
