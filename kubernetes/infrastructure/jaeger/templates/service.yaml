@@ -8,9 +8,12 @@ spec:
   selector:
     app: jaeger
   ports:
-    - name: otlp-grpc
+    # Имя порта обязано начинаться с grpc-: Istio определяет протокол по
+    # префиксу имени. С произвольным именем Envoy отправлял OTLP по HTTP/1.1,
+    # и Jaeger отвечал "received bogus greeting from client".
+    - name: grpc-otlp
       port: 4317
-      targetPort: otlp-grpc
+      targetPort: grpc-otlp
 ---
 apiVersion: v1
 kind: Service
