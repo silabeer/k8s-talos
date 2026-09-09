@@ -1,7 +1,8 @@
 # Оверлей кластера east поверх kubernetes/infrastructure/istio/values.yaml.
 network: network1
 
-# Приватные адреса worker-узлов этого кластера.
+# Приватные адреса worker-узлов этого кластера: на них вешается сервис
+# с externalIPs, по которому шлюз доступен соседнему кластеру.
 eastwestAddresses:
   - 10.10.0.100
   - 10.10.0.101
@@ -9,11 +10,6 @@ eastwestAddresses:
 ambient:
   global:
     network: network1
-
-# Приватные адреса worker-узлов этого кластера.
-eastwestAddresses:
-  - 10.10.0.100
-  - 10.10.0.101
     multiCluster:
       clusterName: east
   ztunnel:
