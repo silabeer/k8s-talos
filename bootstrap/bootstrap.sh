@@ -64,6 +64,18 @@ if [[ "$repo_url" == *CHANGE_ME* ]]; then
   exit 1
 fi
 
+# После `make infra` control plane ещё стартует: etcd проходит pre state, а
+# kube-apiserver слушать не начал, и kubectl отвечает "connection refused".
+echo "==> Ждём kube-apiserver"
+deadline=$(( $(date +%s) + 600 ))
+until kubectl get --raw /readyz >/dev/null 2>&1; do
+  if (( $(date +%s) > deadline )); then
+    echo "kube-apiserver не отвечает 10 минут: talosctl -n <ip> services" >&2
+    exit 1
+  fi
+  sleep 10
+done
+
 # Traefik и Istio стартуют с провайдером Gateway API, им нужны CRD. Дальше ими
 # владеет приложение gateway-api в Argo CD, здесь только снимаем гонку.
 echo "==> CRD Gateway API"
