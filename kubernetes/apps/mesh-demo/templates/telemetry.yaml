@@ -1,0 +1,18 @@
+{{- if and .Values.waypoint.enabled .Values.tracing.enabled }}
+# Спаны генерирует waypoint: это Envoy, и он видит HTTP. ztunnel работает
+# на L4 и трассировку не даёт.
+#
+# Приложения всё равно обязаны пробрасывать заголовки контекста трассировки
+# между входящим и исходящим запросом: меш за них этого не делает, и без
+# этого спаны не склеятся в одну цепочку.
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: mesh-demo
+spec:
+  tracing:
+    - providers:
+        - name: otel
+      # На стенде пишем всё; в бою долю снижают.
+      randomSamplingPercentage: {{ .Values.tracing.samplingPercentage }}
+{{- end }}

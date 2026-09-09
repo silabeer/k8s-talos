@@ -1,0 +1,25 @@
+# Имя сервиса совпадает с тем, что указано в extensionProviders istiod:
+# jaeger-collector.jaeger.svc.cluster.local:4317.
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger-collector
+spec:
+  selector:
+    app: jaeger
+  ports:
+    - name: otlp-grpc
+      port: 4317
+      targetPort: otlp-grpc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger-ui
+spec:
+  selector:
+    app: jaeger
+  ports:
+    - name: http
+      port: 80
+      targetPort: ui

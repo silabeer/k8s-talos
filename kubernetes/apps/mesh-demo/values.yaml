@@ -21,3 +21,9 @@ waypoint:
   # Имя обязано совпадать во всех кластерах меша: ambient-мультикластер
   # сопоставляет waypoint по имени.
   name: waypoint
+
+# Трассировка на waypoint. Провайдер otel объявлен в values Istio и
+# указывает на jaeger-collector.
+tracing:
+  enabled: true
+  samplingPercentage: 100

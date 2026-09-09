@@ -21,6 +21,15 @@ ambient:
     variant: distroless
   istiod:
     profile: ambient
+    meshConfig:
+      # Куда waypoint отправляет спаны. Провайдер объявляется здесь, а
+      # включается ресурсом Telemetry рядом с приложением: так трассировка
+      # включается точечно, а не всему мешу сразу.
+      extensionProviders:
+        - name: otel
+          opentelemetry:
+            service: jaeger-collector.jaeger.svc.cluster.local
+            port: 4317
     env:
       # Мультисетевой ambient: без этих флагов east-west gateway не
       # используется и удалённые endpoint'ы не появляются.

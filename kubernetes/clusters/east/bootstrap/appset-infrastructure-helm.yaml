@@ -22,6 +22,9 @@ spec:
           - name: istio
             namespace: istio-system
             path: kubernetes/infrastructure/istio
+          - name: jaeger
+            namespace: jaeger
+            path: kubernetes/infrastructure/jaeger
           - name: metrics-server
             namespace: kube-system
             path: kubernetes/infrastructure/metrics-server

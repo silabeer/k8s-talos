@@ -1,0 +1,5 @@
+apiVersion: v2
+name: jaeger
+description: Хранилище и просмотр трассировок для меша
+type: application
+version: 0.1.0
