@@ -10,6 +10,13 @@ kind: Telemetry
 metadata:
   name: mesh-demo
 spec:
+  # Без targetRefs ресурс применяется к ztunnel, а тот работает на L4 и
+  # спанов не создаёт: трассировка молча не появляется. Привязываем к
+  # waypoint — так же, как это делают политики авторизации уровня L7.
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: {{ .Values.waypoint.name }}
   tracing:
     - providers:
         - name: otel
