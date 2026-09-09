@@ -8,12 +8,13 @@ kind: Gateway
 metadata:
   name: istio-eastwestgateway
   namespace: istio-system
-  # Метки topology.istio.io/network здесь намеренно нет. С ней istiod
-  # автоматически считает сервис шлюза точкой входа в сеть и рекламирует
-  # соседям его ClusterIP, а тот из другого кластера недоступен: сосед
-  # получал "connection timed out ... HBONE port 15008". Сеть кластера и так
-  # задана меткой на namespace istio-system, а адрес шлюза берётся из
-  # meshNetworks в values, где он маршрутизируемый.
+  labels:
+    # Обязательна: istiod ищет сетевые шлюзы среди объектов Gateway и
+    # пропускает те, у которых нет этой метки (remoteK8sGatewayToNetworkGateways
+    # в pilot/pkg/serviceregistry/ambient/networks.go). Без неё в логах
+    # "No network gateway found for network ..." и endpoint'ы соседнего
+    # кластера до ztunnel не доходят.
+    topology.istio.io/network: {{ required "нужен .Values.network" .Values.network | quote }}
   annotations:
     # LoadBalancer, хотя провайдера LoadBalancer в кластере нет. istiod
     # рекламирует соседям адрес из status сервиса, а его для LoadBalancer
