@@ -1,7 +1,11 @@
 # istio.io/global делает сервис общим для mesh: istiod соседнего кластера
-# начинает видеть его endpoint'ы и балансировать между кластерами. Без метки
-# сервис остаётся локальным, даже если одноимённый есть в обоих кластерах.
-# Метка нужна в КАЖДОМ кластере, где сервис должен быть доступен снаружи.
+# начинает видеть его endpoint'ы. Без метки сервис остаётся локальным, даже
+# если одноимённый есть в обоих кластерах.
+#
+# mesh-demo выбирает поды любого кластера, mesh-demo-<кластер> — только
+# своего. Вторые существуют в каждом кластере, но endpoint'ы у них есть лишь
+# в одном: обращение к mesh-demo-west из east гарантированно уходит через
+# east-west gateway.
 apiVersion: v1
 kind: Service
 metadata:
@@ -15,3 +19,20 @@ spec:
     - name: http
       port: 80
       targetPort: http
+{{- range .Values.clusters }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mesh-demo-{{ . }}
+  labels:
+    istio.io/global: "true"
+spec:
+  selector:
+    app: mesh-demo
+    cluster: {{ . }}
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+{{- end }}

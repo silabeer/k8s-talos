@@ -7,3 +7,8 @@ metadata:
   name: mesh-demo
   labels:
     istio.io/dataplane-mode: ambient
+{{- if .Values.waypoint.enabled }}
+    # Направляет трафик к сервисам неймспейса через waypoint. Метка на
+    # сервисе перекрыла бы эту, метка на поде — обе.
+    istio.io/use-waypoint: {{ .Values.waypoint.name | quote }}
+{{- end }}

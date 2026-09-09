@@ -1,22 +1,24 @@
 {{- if .Values.server }}
-# Сервер отвечает именем кластера и своего пода. Развёрнут в обоих кластерах
-# под одним именем и в одном неймспейсе: именно так Istio делает сервис
-# общим для меша и балансирует запросы между кластерами.
+# Сервер отвечает именем своего кластера. Имя деплоймента включает кластер,
+# чтобы сервис mesh-demo-<кластер> выбирал только его поды.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: mesh-demo
+  name: mesh-demo-{{ .Values.cluster }}
   labels:
     app: mesh-demo
+    cluster: {{ .Values.cluster }}
 spec:
   replicas: 1
   selector:
     matchLabels:
       app: mesh-demo
+      cluster: {{ .Values.cluster }}
   template:
     metadata:
       labels:
         app: mesh-demo
+        cluster: {{ .Values.cluster }}
     spec:
       containers:
         - name: httpd

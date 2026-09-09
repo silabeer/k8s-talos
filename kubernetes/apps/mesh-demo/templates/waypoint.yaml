@@ -1,0 +1,19 @@
+{{- if .Values.waypoint.enabled }}
+# Waypoint — обычный Envoy, который istiod разворачивает по этому объекту.
+# Он встаёт в путь только для трафика к сервисам этого неймспейса и только
+# на стороне назначения: клиент о нём не знает.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: {{ .Values.waypoint.name }}
+  labels:
+    # service — waypoint обрабатывает трафик, адресованный сервисам.
+    # Другие значения: workload (адресованный подам), all, none.
+    istio.io/waypoint-for: service
+spec:
+  gatewayClassName: istio-waypoint
+  listeners:
+    - name: mesh
+      port: 15008
+      protocol: HBONE
+{{- end }}
