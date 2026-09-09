@@ -1,0 +1,31 @@
+{{- if .Values.eastwestAddresses }}
+# Адрес, по которому east-west gateway доступен из соседнего кластера.
+#
+# Сервис, который создаёт сам Istio для Gateway, имеет тип NodePort: провайдера
+# LoadBalancer в кластере нет, а квота Yandex на балансировщики исчерпана.
+# NodePort даёт случайный порт и не попадает в status, поэтому istiod соседа
+# не знает адреса и межкластерный трафик просто не строится.
+#
+# Здесь отдельный сервис с externalIPs на приватные адреса worker-узлов:
+# подсети кластеров в одной VPC и маршрутизируются, поэтому сосед приходит
+# на <адрес узла>:15008 и попадает на под шлюза. Порт фиксированный, адреса
+# детерминированные, так что их можно прописать в meshNetworks в values.
+apiVersion: v1
+kind: Service
+metadata:
+  name: istio-eastwestgateway-external
+  namespace: istio-system
+  labels:
+    topology.istio.io/network: {{ .Values.network | quote }}
+spec:
+  type: ClusterIP
+  externalIPs:
+    {{- toYaml .Values.eastwestAddresses | nindent 4 }}
+  selector:
+    gateway.networking.k8s.io/gateway-name: istio-eastwestgateway
+  ports:
+    - name: tls
+      port: 15008
+      targetPort: 15008
+      protocol: TCP
+{{- end }}

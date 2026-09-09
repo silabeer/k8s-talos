@@ -7,10 +7,36 @@
 #
 # Имя кластера, сеть и meshID задаёт оверлей кластера в
 # kubernetes/clusters/<name>/values/istio.yaml.
+# Адреса east-west gateway этого кластера: приватные адреса worker-узлов,
+# на них вешается сервис с externalIPs (см. templates/eastwest-address.yaml).
+# Задаёт оверлей кластера.
+eastwestAddresses: []
+
 ambient:
   global:
     meshID: mesh1
     variant: distroless
+    # Как добраться до шлюза каждой сети. Без этого istiod не знает адреса
+    # соседнего кластера: сервис шлюза типа NodePort, внешнего адреса у него
+    # нет, автоопределение работает только с LoadBalancer.
+    # Список одинаков во всех кластерах меша.
+    meshNetworks:
+      network1:
+        endpoints:
+          - fromRegistry: east
+        gateways:
+          - address: 10.10.0.100
+            port: 15008
+          - address: 10.10.0.101
+            port: 15008
+      network2:
+        endpoints:
+          - fromRegistry: west
+        gateways:
+          - address: 10.20.0.100
+            port: 15008
+          - address: 10.20.0.101
+            port: 15008
 
   istiod:
     profile: ambient
