@@ -1,3 +1,25 @@
+# Текущий публичный адрес машины, с которой запускается tofu. Хост
+# ipv4.icanhazip.com имеет только A-запись, поэтому ответ гарантированно
+# IPv4: у провайдера http нет способа запретить IPv6, а адрес IPv6 сломал бы
+# маску /32.
+data "http" "my_ip" {
+  count = var.auto_admin_ip ? 1 : 0
+
+  url = "https://ipv4.icanhazip.com"
+
+  retry {
+    attempts     = 3
+    min_delay_ms = 500
+  }
+}
+
+locals {
+  admin_cidrs = distinct(concat(
+    var.admin_cidrs,
+    var.auto_admin_ip ? ["${trimspace(data.http.my_ip[0].response_body)}/32"] : [],
+  ))
+}
+
 resource "yandex_vpc_network" "this" {
   name = var.project_name
 }
@@ -63,7 +85,7 @@ locals {
         direction      = "ingress"
         protocol       = "TCP"
         port           = 50000
-        v4_cidr_blocks = var.admin_cidrs
+        v4_cidr_blocks = local.admin_cidrs
         description    = "Talos API для администратора и tofu"
       }
       kube_api = {
@@ -104,14 +126,14 @@ locals {
         direction      = "ingress"
         protocol       = "TCP"
         port           = 80
-        v4_cidr_blocks = var.admin_cidrs
+        v4_cidr_blocks = local.admin_cidrs
         description    = "Artifact Keeper: UI/API для администратора и tofu"
       }
       registry_ssh = {
         direction      = "ingress"
         protocol       = "TCP"
         port           = 22
-        v4_cidr_blocks = var.admin_cidrs
+        v4_cidr_blocks = local.admin_cidrs
         description    = "SSH на ВМ реестра"
       }
     } : {}

@@ -25,7 +25,7 @@ CLUSTER ?= east
 export KUBECONFIG := $(CURDIR)/infra/out/$(CLUSTER)/kubeconfig
 export TALOSCONFIG := $(CURDIR)/infra/out/$(CLUSTER)/talosconfig
 
-.PHONY: help tools providers set-repo set-admin-ip set-ingress-ip infra bootstrap up check env registry upgrade replace destroy
+.PHONY: help tools providers set-repo set-ingress-ip infra bootstrap up check env registry upgrade replace destroy
 
 help: ## Список целей
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -45,12 +45,6 @@ providers: $(TF_CLI_CONFIG_FILE) ## Скачать провайдер talos с G
 $(TF_CLI_CONFIG_FILE):
 	@printf 'provider_installation {\n  filesystem_mirror {\n    path    = "%s"\n    include = ["registry.terraform.io/siderolabs/talos"]\n  }\n  network_mirror {\n    url     = "https://terraform-mirror.yandexcloud.net/"\n    exclude = ["registry.terraform.io/siderolabs/talos"]\n  }\n}\n' "$(PROVIDERS_DIR)" > $@
 	@echo "создан $@"
-
-set-admin-ip: ## Записать текущий публичный IPv4 в admin_cidrs (провайдер выдал новый адрес)
-	@ip=$$(curl -4 -s --max-time 15 https://ifconfig.me); \
-	test -n "$$ip" || (echo "не удалось определить адрес"; exit 1); \
-	sed -i '' "s#admin_cidrs = \[.*\]#admin_cidrs = [\"$$ip/32\"]#" infra/terraform.tfvars; \
-	echo "admin_cidrs = [\"$$ip/32\"], теперь make infra"
 
 set-ingress-ip: ## Прописать IP балансировщика в values Traefik (после make infra)
 	@ip=$$(cd infra && $(TF) output -json clusters | python3 -c 'import sys,json; print(json.load(sys.stdin)["$(CLUSTER)"]["ingress_ip"])'); \

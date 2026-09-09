@@ -98,9 +98,16 @@ variable "core_fraction" {
   default     = 100
 }
 
+variable "auto_admin_ip" {
+  description = "Добавлять текущий публичный IPv4 машины, с которой запущен tofu, в правила для Talos API и реестра. Провайдеры часто меняют адрес, а симптомы выглядят как зависший узел."
+  type        = bool
+  default     = true
+}
+
 variable "admin_cidrs" {
-  description = "Откуда разрешён доступ к Talos API (порт 50000). Обычно ваш публичный IP /32."
+  description = "Откуда разрешён доступ к Talos API (порт 50000) и к реестру. Текущий адрес машины добавляется автоматически, см. auto_admin_ip; здесь перечисляют постоянные адреса, например офисные."
   type        = list(string)
+  default     = []
 }
 
 variable "apiserver_allowed_cidrs" {

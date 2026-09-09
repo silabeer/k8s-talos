@@ -1,8 +1,9 @@
 cluster_name = "talos"
 zone         = "ru-central1-a"
 
-# Ваш публичный IP: curl -s ifconfig.me
-admin_cidrs = ["203.0.113.10/32"]
+# Текущий адрес машины, с которой запускается tofu, добавляется автоматически
+# (auto_admin_ip = true). Здесь перечисляют постоянные адреса, например офисные.
+admin_cidrs = []
 
 # Ограничьте при желании; kube-apiserver защищён mTLS.
 apiserver_allowed_cidrs = ["0.0.0.0/0"]
