@@ -49,6 +49,19 @@ spec:
       destination:
         server: https://kubernetes.default.svc
         namespace: "{{ .namespace }}"
+      # Часть полей webhook'ов дописывает не Argo CD: caBundle подставляет
+      # istiod или cainjector, а failurePolicy istiod переключает после того,
+      # как поднимется. Без этого приложение навсегда остаётся OutOfSync.
+      ignoreDifferences:
+        - group: admissionregistration.k8s.io
+          kind: ValidatingWebhookConfiguration
+          jqPathExpressions:
+            - .webhooks[]?.failurePolicy
+            - .webhooks[]?.clientConfig.caBundle
+        - group: admissionregistration.k8s.io
+          kind: MutatingWebhookConfiguration
+          jqPathExpressions:
+            - .webhooks[]?.clientConfig.caBundle
       syncPolicy:
         automated:
           prune: true
