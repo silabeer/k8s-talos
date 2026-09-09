@@ -1,8 +1,8 @@
 # East-west gateway: точка входа для трафика из других кластеров меша.
 # Порт 15008, double HBONE, TLS терминируется в режиме ISTIO_MUTUAL.
 #
-# Тип сервиса NodePort, а не LoadBalancer: провайдера LoadBalancer в кластере
-# нет, а узлы обоих кластеров живут в одной VPC и видят друг друга.
+# Реально трафик приходит на <адрес worker-узла>:15008: это отдельный сервис
+# с externalIPs, см. eastwest-address.yaml. Подсети кластеров в одной VPC.
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
@@ -15,7 +15,12 @@ metadata:
   # задана меткой на namespace istio-system, а адрес шлюза берётся из
   # meshNetworks в values, где он маршрутизируемый.
   annotations:
-    networking.istio.io/service-type: NodePort
+    # LoadBalancer, хотя провайдера LoadBalancer в кластере нет. istiod
+    # рекламирует соседям адрес из status сервиса, а его для LoadBalancer
+    # никто не проставляет автоматически — это делает bootstrap/mesh.sh,
+    # записывая туда приватные адреса worker-узлов. При NodePort istiod
+    # рекламировал ClusterIP, недоступный из другого кластера.
+    networking.istio.io/service-type: LoadBalancer
 spec:
   gatewayClassName: istio-east-west
   listeners:

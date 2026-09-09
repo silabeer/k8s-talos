@@ -116,6 +116,22 @@ EOF
     kubectl --kubeconfig "$(kc "$cluster")" -n istio-system rollout restart "$deploy" >/dev/null
   done
   echo "    $cluster: istiod, ztunnel и шлюзы перезапущены с общим корнем"
+
+  # Адрес, который istiod рекламирует соседям, он берёт из status сервиса
+  # шлюза. Провайдера LoadBalancer в кластере нет, поэтому status пуст, и
+  # istiod подставлял ClusterIP, недоступный снаружи кластера. Записываем
+  # туда приватные адреса worker-узлов: на них висит сервис с externalIPs.
+  addrs="$(kubectl --kubeconfig "$(kc "$cluster")" -n istio-system get svc \
+    istio-eastwestgateway-external -o jsonpath='{.spec.externalIPs[*]}' 2>/dev/null || true)"
+  if [[ -n "$addrs" ]]; then
+    ingress="$(for ip in $addrs; do printf '{"ip":"%s"},' "$ip"; done | sed 's/,$//')"
+    kubectl --kubeconfig "$(kc "$cluster")" -n istio-system patch svc istio-eastwestgateway \
+      --subresource=status --type=merge \
+      -p "{\"status\":{\"loadBalancer\":{\"ingress\":[$ingress]}}}" >/dev/null
+    echo "    $cluster: шлюз рекламируется по адресам $addrs"
+  else
+    echo "    $cluster: нет сервиса istio-eastwestgateway-external, адрес шлюза не проставлен" >&2
+  fi
 done
 
 # --- 3. Обмен доступом к API-серверам ----------------------------------------
