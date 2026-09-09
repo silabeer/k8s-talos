@@ -36,6 +36,28 @@ echo "==> Кластеры: ${clusters[*]}"
 
 kc() { echo "$OUT/$1/kubeconfig"; }
 
+# Istio разворачивает Argo CD, и после bootstrap это занимает несколько минут.
+# Без ожидания скрипт падает на "namespaces istio-system not found".
+wait_istio() {
+  local cluster="$1" deadline
+  deadline=$(( $(date +%s) + ${ISTIO_WAIT:-900} ))
+  echo "==> $cluster: ждём Istio"
+  until kubectl --kubeconfig "$(kc "$cluster")" -n istio-system get deploy istiod >/dev/null 2>&1; do
+    if (( $(date +%s) > deadline )); then
+      echo "В кластере $cluster нет istiod. Проверьте: kubectl -n argocd get app istio" >&2
+      exit 1
+    fi
+    sleep 15
+  done
+  kubectl --kubeconfig "$(kc "$cluster")" -n istio-system rollout status deploy/istiod --timeout=10m >/dev/null
+  kubectl --kubeconfig "$(kc "$cluster")" -n istio-system rollout status deploy/istio-eastwestgateway --timeout=10m >/dev/null
+  echo "    $cluster: istiod и east-west gateway готовы"
+}
+
+for cluster in "${clusters[@]}"; do
+  wait_istio "$cluster"
+done
+
 # --- 1. Общий корневой CA -----------------------------------------------------
 
 mkdir -p "$CA_DIR"
