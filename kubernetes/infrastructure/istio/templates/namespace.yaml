@@ -7,3 +7,10 @@ metadata:
   name: istio-system
   labels:
     topology.istio.io/network: {{ required "нужен .Values.network" .Values.network | quote }}
+    # Talos включает Pod Security Admission с профилем baseline по умолчанию.
+    # istio-cni и ztunnel работают с hostPath, NET_ADMIN и unconfined AppArmor,
+    # под baseline они не стартуют вовсе: DaemonSet бесконечно повторяет
+    # FailedCreate. Чарт эти метки не проставляет, задаём сами.
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/audit: privileged
+    pod-security.kubernetes.io/warn: privileged

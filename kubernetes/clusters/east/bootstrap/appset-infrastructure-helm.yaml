@@ -1,0 +1,64 @@
+# Платформенные компоненты (helm) кластера east. Состав кластеров различается, поэтому список
+# явный, а не генератор по файлам.
+# Здесь только umbrella-чарты: kustomize-приложения не имеют Chart.yaml,
+# и helm-параметры в шаблоне ломают им рендер.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: infrastructure-helm
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - list:
+        elements:
+          - name: cilium
+            namespace: kube-system
+            path: kubernetes/infrastructure/cilium
+          - name: argocd
+            namespace: argocd
+            path: kubernetes/infrastructure/argocd
+          - name: istio
+            namespace: istio-system
+            path: kubernetes/infrastructure/istio
+          - name: metrics-server
+            namespace: kube-system
+            path: kubernetes/infrastructure/metrics-server
+          - name: cert-manager
+            namespace: cert-manager
+            path: kubernetes/infrastructure/cert-manager
+          - name: traefik
+            namespace: traefik
+            path: kubernetes/infrastructure/traefik
+  template:
+    metadata:
+      name: "{{ .name }}"
+    spec:
+      project: infrastructure
+      source:
+        repoURL: https://github.com/silabeer/k8s-talos.git
+        targetRevision: main
+        path: "{{ .path }}"
+        helm:
+          # Общие values компонента плюс оверлей этого кластера, если он есть.
+          valueFiles:
+            - values.yaml
+            - ../../clusters/east/values/{{ .name }}.yaml
+          ignoreMissingValueFiles: true
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: "{{ .namespace }}"
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
+        retry:
+          limit: 10
+          backoff:
+            duration: 15s
+            factor: 2
+            maxDuration: 5m

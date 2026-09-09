@@ -1,0 +1,45 @@
+# Платформенные компоненты (kustomize) кластера west. Состав кластеров различается, поэтому список
+# явный, а не генератор по файлам.
+# Здесь только kustomize: helm-параметры этим приложениям не нужны.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: infrastructure-kustomize
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - list:
+        elements:
+          - name: gateway-api
+            namespace: gateway-system
+            path: kubernetes/infrastructure/gateway-api
+          - name: kubelet-serving-cert-approver
+            namespace: kubelet-serving-cert-approver
+            path: kubernetes/infrastructure/kubelet-serving-cert-approver
+  template:
+    metadata:
+      name: "{{ .name }}"
+    spec:
+      project: infrastructure
+      source:
+        repoURL: https://github.com/silabeer/k8s-talos.git
+        targetRevision: main
+        path: "{{ .path }}"
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: "{{ .namespace }}"
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
+        retry:
+          limit: 10
+          backoff:
+            duration: 15s
+            factor: 2
+            maxDuration: 5m

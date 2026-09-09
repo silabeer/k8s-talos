@@ -1,9 +1,10 @@
-# Компоненты кластера east перечислены явно: состав кластеров различается,
-# а генератор по файлам создавал бы во всех одно и то же.
+# Платформенные компоненты (kustomize) кластера east. Состав кластеров различается, поэтому список
+# явный, а не генератор по файлам.
+# Здесь только kustomize: helm-параметры этим приложениям не нужны.
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
-  name: infrastructure
+  name: infrastructure-kustomize
   namespace: argocd
 spec:
   goTemplate: true
@@ -14,27 +15,9 @@ spec:
           - name: gateway-api
             namespace: gateway-system
             path: kubernetes/infrastructure/gateway-api
-          - name: cilium
-            namespace: kube-system
-            path: kubernetes/infrastructure/cilium
-          - name: argocd
-            namespace: argocd
-            path: kubernetes/infrastructure/argocd
-          - name: istio
-            namespace: istio-system
-            path: kubernetes/infrastructure/istio
-          - name: metrics-server
-            namespace: kube-system
-            path: kubernetes/infrastructure/metrics-server
           - name: kubelet-serving-cert-approver
             namespace: kubelet-serving-cert-approver
             path: kubernetes/infrastructure/kubelet-serving-cert-approver
-          - name: cert-manager
-            namespace: cert-manager
-            path: kubernetes/infrastructure/cert-manager
-          - name: traefik
-            namespace: traefik
-            path: kubernetes/infrastructure/traefik
           - name: piraeus
             namespace: piraeus-datastore
             path: kubernetes/infrastructure/piraeus
@@ -47,12 +30,6 @@ spec:
         repoURL: https://github.com/silabeer/k8s-talos.git
         targetRevision: main
         path: "{{ .path }}"
-        helm:
-          # Общие values компонента плюс необязательный оверлей этого кластера.
-          valueFiles:
-            - values.yaml
-            - ../../clusters/east/values/{{ .name }}.yaml
-          ignoreMissingValueFiles: true
       destination:
         server: https://kubernetes.default.svc
         namespace: "{{ .namespace }}"

@@ -1,0 +1,49 @@
+# Приложения (helm) кластера east. Состав кластеров различается, поэтому список
+# явный, а не генератор по файлам.
+# Здесь только umbrella-чарты: kustomize-приложения не имеют Chart.yaml,
+# и helm-параметры в шаблоне ломают им рендер.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: apps-helm
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - list:
+        elements:
+          - name: mesh-demo
+            namespace: mesh-demo
+            path: kubernetes/apps/mesh-demo
+  template:
+    metadata:
+      name: "{{ .name }}"
+    spec:
+      project: apps
+      source:
+        repoURL: https://github.com/silabeer/k8s-talos.git
+        targetRevision: main
+        path: "{{ .path }}"
+        helm:
+          # Общие values компонента плюс оверлей этого кластера, если он есть.
+          valueFiles:
+            - values.yaml
+            - ../../clusters/east/values/{{ .name }}.yaml
+          ignoreMissingValueFiles: true
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: "{{ .namespace }}"
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
+        retry:
+          limit: 10
+          backoff:
+            duration: 15s
+            factor: 2
+            maxDuration: 5m

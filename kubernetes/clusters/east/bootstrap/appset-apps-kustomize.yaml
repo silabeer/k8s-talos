@@ -1,9 +1,10 @@
-# Компоненты кластера east перечислены явно: состав кластеров различается,
-# а генератор по файлам создавал бы во всех одно и то же.
+# Приложения (kustomize) кластера east. Состав кластеров различается, поэтому список
+# явный, а не генератор по файлам.
+# Здесь только kustomize: helm-параметры этим приложениям не нужны.
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
-  name: apps
+  name: apps-kustomize
   namespace: argocd
 spec:
   goTemplate: true
@@ -17,9 +18,6 @@ spec:
           - name: pv-demo
             namespace: pv-demo
             path: kubernetes/apps/pv-demo
-          - name: mesh-demo
-            namespace: mesh-demo
-            path: kubernetes/apps/mesh-demo
   template:
     metadata:
       name: "{{ .name }}"
@@ -29,12 +27,6 @@ spec:
         repoURL: https://github.com/silabeer/k8s-talos.git
         targetRevision: main
         path: "{{ .path }}"
-        helm:
-          # Общие values компонента плюс необязательный оверлей этого кластера.
-          valueFiles:
-            - values.yaml
-            - ../../clusters/east/values/{{ .name }}.yaml
-          ignoreMissingValueFiles: true
       destination:
         server: https://kubernetes.default.svc
         namespace: "{{ .namespace }}"
