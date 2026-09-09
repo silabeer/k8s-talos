@@ -48,6 +48,25 @@ chart_dir() {
   sed "s#$registry_private#$registry_public#g" "$src/Chart.yaml" > "$tmp/Chart.yaml"
   echo "$tmp"
 }
+# Прерванный bootstrap оставляет релиз в состоянии pending-install, и все
+# следующие запуски падают с "another operation is in progress", хотя ресурсы
+# уже созданы и работают. Снимаем зависшую запись: повторный
+# `helm upgrade --install` подхватит существующие объекты, у них проставлены
+# метки того же релиза.
+unstick_release() {
+  local name="$1" ns="$2" status
+  status="$(helm status "$name" -n "$ns" -o json 2>/dev/null \
+    | python3 -c 'import sys,json; print(json.load(sys.stdin)["info"]["status"])' 2>/dev/null || true)"
+  case "$status" in
+    pending-*)
+      echo "==> $name: релиз завис в состоянии $status, снимаем запись"
+      kubectl -n "$ns" delete secret -l "owner=helm,name=$name,status=$status" >/dev/null
+      ;;
+  esac
+}
+unstick_release cilium kube-system
+unstick_release argocd argocd
+
 cilium_chart="$(chart_dir cilium)"
 argocd_chart="$(chart_dir argocd)"
 
