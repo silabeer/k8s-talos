@@ -1,0 +1,25 @@
+{{- if .Values.waypoint.enabled }}
+# Метка istio.io/use-waypoint выражает намерение, но не гарантирует
+# прохождение: если waypoint не существует, у него нет адреса или тип
+# трафика не тот, ztunnel отправит запрос напрямую, а не вернёт ошибку.
+# Политики L7 при этом молча не применятся.
+#
+# Эта политика делает waypoint обязательным: поды принимают соединения
+# только от его идентичности. Waypoint работает под учётной записью, имя
+# которой совпадает с именем Gateway. Идентичность одинакова в обоих
+# кластерах, поэтому запрос из соседнего кластера тоже проходит.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: require-waypoint
+spec:
+  selector:
+    matchLabels:
+      app: mesh-demo
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/{{ .Release.Namespace }}/sa/{{ .Values.waypoint.name }}
+{{- end }}
