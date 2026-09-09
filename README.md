@@ -233,6 +233,9 @@ cert-manager поддержку Gateway API, добавить listener `websecur
 `certificateRefs` и аннотацию `cert-manager.io/cluster-issuer` на Gateway.
 Домены в манифестах — заглушки `*.example.com`.
 
+Подключение к внешней PKI, когда корень и промежуточные ведёт служба
+информационной безопасности, описано отдельно: [docs/mtls-external-ca.md](docs/mtls-external-ca.md).
+
 ## Свой installer с расширениями (локальная сборка)
 
 Всё описанное ниже делает `make infra` автоматически, если в tfvars задан
