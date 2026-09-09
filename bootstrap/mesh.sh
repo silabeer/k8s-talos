@@ -109,7 +109,13 @@ EOF
   kubectl --kubeconfig "$(kc "$cluster")" -n istio-system rollout restart deploy/istiod >/dev/null
   kubectl --kubeconfig "$(kc "$cluster")" -n istio-system rollout status deploy/istiod --timeout=5m >/dev/null
   kubectl --kubeconfig "$(kc "$cluster")" -n istio-system rollout restart daemonset/ztunnel >/dev/null
-  echo "    $cluster: istiod перезапущен с общим корнем"
+  # Шлюзы тоже: их сертификат выписан прежним корнем, и сосед отвергает
+  # соединение с "invalid peer certificate: UnknownIssuer".
+  for deploy in $(kubectl --kubeconfig "$(kc "$cluster")" -n istio-system get deploy \
+      -l gateway.networking.k8s.io/gateway-name -o name 2>/dev/null); do
+    kubectl --kubeconfig "$(kc "$cluster")" -n istio-system rollout restart "$deploy" >/dev/null
+  done
+  echo "    $cluster: istiod, ztunnel и шлюзы перезапущены с общим корнем"
 done
 
 # --- 3. Обмен доступом к API-серверам ----------------------------------------

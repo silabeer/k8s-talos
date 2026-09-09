@@ -8,8 +8,12 @@ kind: Gateway
 metadata:
   name: istio-eastwestgateway
   namespace: istio-system
-  labels:
-    topology.istio.io/network: {{ required "нужен .Values.network" .Values.network | quote }}
+  # Метки topology.istio.io/network здесь намеренно нет. С ней istiod
+  # автоматически считает сервис шлюза точкой входа в сеть и рекламирует
+  # соседям его ClusterIP, а тот из другого кластера недоступен: сосед
+  # получал "connection timed out ... HBONE port 15008". Сеть кластера и так
+  # задана меткой на namespace istio-system, а адрес шлюза берётся из
+  # meshNetworks в values, где он маршрутизируемый.
   annotations:
     networking.istio.io/service-type: NodePort
 spec:

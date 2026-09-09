@@ -15,8 +15,6 @@ kind: Service
 metadata:
   name: istio-eastwestgateway-external
   namespace: istio-system
-  labels:
-    topology.istio.io/network: {{ .Values.network | quote }}
 spec:
   type: ClusterIP
   externalIPs:
