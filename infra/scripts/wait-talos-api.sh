@@ -33,8 +33,16 @@ while [[ -n "${pending// /}" ]]; do
     echo "Узлы не открыли порт 50000 за ${timeout_secs}s:" >&2
     for entry in $pending; do echo "  ${entry%%=*} (${entry##*=})" >&2; done
     echo >&2
-    echo "Проверьте, что ваш публичный адрес есть в admin_cidrs (make set-admin-ip)." >&2
-    echo "Если адрес верный, узел завис на загрузке: make replace CLUSTER=<кластер> NODES=\"<имя>\"" >&2
+    echo "Посмотрите, что с узлом:" >&2
+    echo "  yc compute instance get-serial-port-output <имя> | tail -30" >&2
+    echo >&2
+    echo "Если в выводе Talos пишет \"entering maintenance service\" и называет" >&2
+    echo "приватный адрес, узел исправен, а сломан NAT на стороне Yandex: такое" >&2
+    echo "встречается примерно на одной машине из шести, конфигурация при этом" >&2
+    echo "не отличается от соседних. Помогает только пересоздание, stop/start нет:" >&2
+    echo "  make replace CLUSTER=<кластер> NODES=\"<имя>\"" >&2
+    echo >&2
+    echo "Если вывод пуст или обрывается раньше, узел действительно не загрузился." >&2
     exit 1
   fi
   sleep 10
