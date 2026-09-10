@@ -13,8 +13,11 @@ set -euo pipefail
 timeout_secs="${TIMEOUT:-600}"
 deadline=$(( $(date +%s) + timeout_secs ))
 
+# Управление заданиями выключено: иначе оболочка печатает "Alarm clock"
+# на каждую неудачную попытку и забивает вывод apply.
+set +m
 port_open() {
-  perl -e 'alarm 5; exec @ARGV' bash -c "exec 3<>/dev/tcp/$1/50000" >/dev/null 2>&1
+  ( perl -e 'alarm 5; exec @ARGV' bash -c "exec 3<>/dev/tcp/$1/50000" ) >/dev/null 2>&1
 }
 
 pending="$NODES"
